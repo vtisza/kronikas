@@ -9,7 +9,7 @@ install: ## Install with pip (fallback if uv is not available)
 	pip install -e ".[dev]"
 
 sync: ## Install dependencies with uv (recommended)
-	uv sync --group dev
+	uv sync --extra dev
 
 lint: ## Run ruff linter
 	uv run ruff check .

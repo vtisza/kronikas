@@ -8,7 +8,6 @@ import pymc as pm
 import pytest
 
 from kronikas.config import ModelConfig, PollsterPrior
-from kronikas.data import PollData
 from kronikas.model import (
     CandidateEstimate,
     ForecastResult,
@@ -19,14 +18,18 @@ from kronikas.model import (
 
 
 class TestBuildModel:
-    def test_returns_model_and_metadata(self, poll_data, election_date, today, fast_config):
+    def test_returns_model_and_metadata(
+        self, poll_data, election_date, today, fast_config
+    ):
         model, meta = build_model(poll_data, election_date, today, fast_config)
         assert isinstance(model, pm.Model)
         assert "today_idx" in meta
         assert "election_idx" in meta
         assert "n_timesteps" in meta
 
-    def test_model_has_expected_variables(self, poll_data, election_date, today, fast_config):
+    def test_model_has_expected_variables(
+        self, poll_data, election_date, today, fast_config
+    ):
         model, _ = build_model(poll_data, election_date, today, fast_config)
         names = {v.name for v in model.free_RVs}
         assert "sigma_walk" in names
@@ -80,8 +83,12 @@ class TestPollsterPriors:
         """When one pollster has a custom sigma_house, hierarchical
         sigma_house is still created for the other pollster."""
         config = ModelConfig(
-            num_tune=50, num_draws=50, num_chains=1, cores=1,
-            time_step_days=30, progressbar=False,
+            num_tune=50,
+            num_draws=50,
+            num_chains=1,
+            cores=1,
+            time_step_days=30,
+            progressbar=False,
             pollster_priors={"PollCo": PollsterPrior(sigma_house=0.1)},
         )
         model, meta = build_model(poll_data, election_date, today, config)
@@ -97,8 +104,12 @@ class TestPollsterPriors:
         """When every pollster has a custom sigma_house, the hierarchical
         sigma_house is omitted."""
         config = ModelConfig(
-            num_tune=50, num_draws=50, num_chains=1, cores=1,
-            time_step_days=30, progressbar=False,
+            num_tune=50,
+            num_draws=50,
+            num_chains=1,
+            cores=1,
+            time_step_days=30,
+            progressbar=False,
             pollster_priors={
                 "PollCo": PollsterPrior(sigma_house=0.1),
                 "SurveyInc": PollsterPrior(sigma_house=0.2),
@@ -115,8 +126,12 @@ class TestPollsterPriors:
     ):
         """Per-pollster kappa_log_sigma produces a vector kappa_log."""
         config = ModelConfig(
-            num_tune=50, num_draws=50, num_chains=1, cores=1,
-            time_step_days=30, progressbar=False,
+            num_tune=50,
+            num_draws=50,
+            num_chains=1,
+            cores=1,
+            time_step_days=30,
+            progressbar=False,
             pollster_priors={"PollCo": PollsterPrior(kappa_log_sigma=0.1)},
         )
         model, _ = build_model(poll_data, election_date, today, config)
@@ -138,24 +153,28 @@ class TestPollsterPriors:
                 assert rv.eval().shape == ()
                 break
 
-    def test_unknown_pollster_warns(
-        self, poll_data, election_date, today
-    ):
+    def test_unknown_pollster_warns(self, poll_data, election_date, today):
         config = ModelConfig(
-            num_tune=50, num_draws=50, num_chains=1, cores=1,
-            time_step_days=30, progressbar=False,
+            num_tune=50,
+            num_draws=50,
+            num_chains=1,
+            cores=1,
+            time_step_days=30,
+            progressbar=False,
             pollster_priors={"NonExistent": PollsterPrior(sigma_house=0.1)},
         )
         with pytest.warns(UserWarning, match="NonExistent"):
             build_model(poll_data, election_date, today, config)
 
-    def test_combined_house_and_kappa_overrides(
-        self, poll_data, election_date, today
-    ):
+    def test_combined_house_and_kappa_overrides(self, poll_data, election_date, today):
         """Both sigma_house and kappa_log_sigma can be set together."""
         config = ModelConfig(
-            num_tune=50, num_draws=50, num_chains=1, cores=1,
-            time_step_days=30, progressbar=False,
+            num_tune=50,
+            num_draws=50,
+            num_chains=1,
+            cores=1,
+            time_step_days=30,
+            progressbar=False,
             pollster_priors={
                 "PollCo": PollsterPrior(sigma_house=0.1, kappa_log_sigma=0.2),
             },
@@ -249,14 +268,14 @@ class TestPartyForecastDataframe:
             assert (df.values <= 100).all(), f"{day}: values exceed 100%"
             row_sums = df.sum(axis=1)
             np.testing.assert_allclose(
-                row_sums, 100.0, atol=1e-6,
+                row_sums,
+                100.0,
+                atol=1e-6,
                 err_msg=f"{day}: rows do not sum to 100%",
             )
 
     @pytest.mark.slow
-    def test_default_day_is_today(
-        self, poll_data, election_date, today, fast_config
-    ):
+    def test_default_day_is_today(self, poll_data, election_date, today, fast_config):
         model, meta = build_model(poll_data, election_date, today, fast_config)
         trace = run_inference(model, fast_config)
         result = extract_results(trace, poll_data, meta)
@@ -301,8 +320,14 @@ class TestHouseEffectsDataframe:
             len(poll_data.pollsters) * len(poll_data.candidates),
         )
         assert df.columns.names == ["pollster", "candidate"]
-        assert list(df.columns.get_level_values("pollster").unique()) == poll_data.pollsters
-        assert list(df.columns.get_level_values("candidate").unique()) == poll_data.candidates
+        assert (
+            list(df.columns.get_level_values("pollster").unique())
+            == poll_data.pollsters
+        )
+        assert (
+            list(df.columns.get_level_values("candidate").unique())
+            == poll_data.candidates
+        )
 
     @pytest.mark.slow
     def test_values_sum_to_zero_per_pollster(
@@ -317,7 +342,9 @@ class TestHouseEffectsDataframe:
         for pollster in poll_data.pollsters:
             row_sums = df[pollster].sum(axis=1)
             np.testing.assert_allclose(
-                row_sums, 0.0, atol=1e-6,
+                row_sums,
+                0.0,
+                atol=1e-6,
                 err_msg=f"House effects for {pollster!r} do not sum to zero",
             )
 

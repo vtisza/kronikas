@@ -26,16 +26,17 @@ from typing import Any
 
 import arviz as az
 import numpy as np
+import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 
 from .config import ModelConfig, PollsterPrior
 from .data import PollData
 
-
 # ---------------------------------------------------------------------------
 # Result containers
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class CandidateEstimate:
@@ -72,7 +73,7 @@ class ForecastResult:
     house_effect_samples: np.ndarray = field(default=None, repr=False)
     time_grid: list[date] = field(default_factory=list)
 
-    def party_forecast_dataframe(self, day: str = "today") -> "pd.DataFrame":
+    def party_forecast_dataframe(self, day: str = "today") -> pd.DataFrame:
         """Return a DataFrame of posterior vote-share samples per party.
 
         Each row represents one posterior draw (warmup excluded).  Each column
@@ -98,9 +99,7 @@ class ForecastResult:
         elif day == "election_day":
             samples = self.election_samples
         else:
-            raise ValueError(
-                f"day must be 'today' or 'election_day', got {day!r}"
-            )
+            raise ValueError(f"day must be 'today' or 'election_day', got {day!r}")
         if samples is None or len(self.candidates) == 0:
             raise RuntimeError(
                 "Samples not available.  Ensure ForecastResult was created "
@@ -108,7 +107,7 @@ class ForecastResult:
             )
         return pd.DataFrame(samples, columns=self.candidates)
 
-    def latent_trend_dataframe(self) -> "pd.DataFrame":
+    def latent_trend_dataframe(self) -> pd.DataFrame:
         """Return a DataFrame of latent trend percentiles over time.
 
         Returns
@@ -118,8 +117,8 @@ class ForecastResult:
             the latent trend in percentage points for each party at each
             time step.
         """
-        import pandas as pd
         import numpy as np
+        import pandas as pd
 
         pi = self.trace.posterior["pi"].values
         pi = pi.reshape(-1, pi.shape[2], pi.shape[3])
@@ -142,7 +141,7 @@ class ForecastResult:
             df.index = self.time_grid
         return df
 
-    def house_effects_dataframe(self) -> "pd.DataFrame":
+    def house_effects_dataframe(self) -> pd.DataFrame:
         """Return a DataFrame of posterior house-effect samples per pollster and party.
 
         House effects represent systematic per-pollster biases in vote-share
@@ -204,9 +203,7 @@ class ForecastResult:
         lines.append("Election Forecast Summary")
         lines.append("=" * 50)
 
-        def _fmt_section(
-            title: str, estimates: list[CandidateEstimate]
-        ) -> list[str]:
+        def _fmt_section(title: str, estimates: list[CandidateEstimate]) -> list[str]:
             out = [f"\n{title}"]
             out.append("-" * len(title))
             for e in estimates:
@@ -217,15 +214,11 @@ class ForecastResult:
             return out
 
         lines.extend(_fmt_section("Current estimates", self.today_estimates))
-        lines.extend(
-            _fmt_section("Election-day forecast", self.election_day_estimates)
-        )
+        lines.extend(_fmt_section("Election-day forecast", self.election_day_estimates))
 
         lines.append("\nWin probabilities")
         lines.append("-" * 17)
-        for name, prob in sorted(
-            self.win_probabilities.items(), key=lambda kv: -kv[1]
-        ):
+        for name, prob in sorted(self.win_probabilities.items(), key=lambda kv: -kv[1]):
             lines.append(f"  {name:<20s} {prob:6.1%}")
 
         lines.append("=" * 50)
@@ -235,6 +228,7 @@ class ForecastResult:
 # ---------------------------------------------------------------------------
 # Model construction helpers
 # ---------------------------------------------------------------------------
+
 
 def _np_softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:
     """Numerically stable softmax for NumPy arrays."""
@@ -279,8 +273,7 @@ def _build_time_grid(
     total_days = (election_date - first_poll_date).days
     if total_days <= 0:
         raise ValueError(
-            "election_date must be after the first poll date "
-            f"({first_poll_date})."
+            f"election_date must be after the first poll date ({first_poll_date})."
         )
     return math.ceil(total_days / time_step_days) + 1
 
@@ -310,6 +303,7 @@ def _date_to_index(
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def build_model(
     poll_data: PollData,
@@ -363,8 +357,8 @@ def build_model(
     # ------------------------------------------------------------------
     observed_fractions = poll_data.poll_values / 100.0
     observed_fractions = np.clip(observed_fractions, 1e-6, None)
-    observed_fractions = (
-        observed_fractions / observed_fractions.sum(axis=1, keepdims=True)
+    observed_fractions = observed_fractions / observed_fractions.sum(
+        axis=1, keepdims=True
     )
 
     include_house = n_pollsters > 1
@@ -403,9 +397,7 @@ def build_model(
     # Per-pollster, per-party prior means for house effects.
     # Shape: (n_pollsters, n_candidates).  Defaults to 0.0; only entries with an
     # explicit mu_house override are non-zero.  These are in logit space.
-    candidate_index = {
-        name: i for i, name in enumerate(poll_data.candidates)
-    }
+    candidate_index = {name: i for i, name in enumerate(poll_data.candidates)}
     mu_matrix = np.zeros((n_pollsters, n_candidates))
     for j, prior in resolved_priors.items():
         if prior.mu_house:
@@ -441,9 +433,7 @@ def build_model(
             pm.Deterministic("walk_corr", corr)
             pm.Deterministic("walk_sigmas", sigmas)
         else:
-            sigma_walk = pm.HalfNormal(
-                "sigma_walk", sigma=config.sigma_walk_prior
-            )
+            sigma_walk = pm.HalfNormal("sigma_walk", sigma=config.sigma_walk_prior)
 
         # === Dirichlet concentration scaling ===
         if use_per_pollster_kappa:
@@ -453,16 +443,15 @@ def build_model(
                 for j in range(n_pollsters)
             ]
             kappa_log = pm.Normal(
-                "kappa_log", mu=0.0,
+                "kappa_log",
+                mu=0.0,
                 sigma=kappa_sigmas,
                 shape=n_pollsters,
             )
             kappa_scale = pt.exp(kappa_log)  # (n_pollsters,)
         else:
             # Single shared kappa_log (original behaviour)
-            kappa_log = pm.Normal(
-                "kappa_log", mu=0.0, sigma=config.kappa_log_sigma
-            )
+            kappa_log = pm.Normal("kappa_log", mu=0.0, sigma=config.kappa_log_sigma)
             kappa_scale = pt.exp(kappa_log)  # scalar
 
         # === Initial latent support (K-1 log-ratios) ===
@@ -476,7 +465,9 @@ def build_model(
         # === Gaussian random walk (non-centred parameterisation) ===
         if n_timesteps > 1:
             innovations = pm.Normal(
-                "innovations", 0.0, 1.0,
+                "innovations",
+                0.0,
+                1.0,
                 shape=(n_timesteps - 1, n_free),
             )
             if config.correlated_walk:
@@ -484,25 +475,19 @@ def build_model(
                 # each row innovations[t] @ L.T ~ N(0, Σ), producing
                 # correlated steps across log-ratio dimensions.
                 scaled = pt.dot(innovations, chol.T)
-                eta_rest = (
-                    eta_init[None, :]
-                    + pt.cumsum(scaled, axis=0)
-                )
+                eta_rest = eta_init[None, :] + pt.cumsum(scaled, axis=0)
             else:
-                eta_rest = (
-                    eta_init[None, :]
-                    + sigma_walk * pt.cumsum(innovations, axis=0)
+                eta_rest = eta_init[None, :] + sigma_walk * pt.cumsum(
+                    innovations, axis=0
                 )
-            eta = pt.concatenate(
-                [eta_init[None, :], eta_rest], axis=0
-            )  # (T, K-1)
+            eta = pt.concatenate([eta_init[None, :], eta_rest], axis=0)  # (T, K-1)
         else:
             eta = eta_init[None, :]  # (1, K-1)
 
         # Pad with zeros for the reference candidate, then softmax → simplex
         zeros_col = pt.zeros((eta.shape[0], 1))
         eta_full = pt.concatenate([eta, zeros_col], axis=1)  # (T, K)
-        pi = _pt_softmax(eta_full, axis=1)                   # (T, K)
+        pi = _pt_softmax(eta_full, axis=1)  # (T, K)
 
         pm.Deterministic("pi", pi)
 
@@ -519,14 +504,14 @@ def build_model(
                 sigma_parts = []
                 for j in range(n_pollsters):
                     if j in has_custom_house:
-                        sigma_parts.append(
-                            np.float64(has_custom_house[j])
-                        )
+                        sigma_parts.append(np.float64(has_custom_house[j]))
                     else:
                         sigma_parts.append(sigma_house)
                 sigma_vec = pt.stack(sigma_parts)  # (n_pollsters,)
                 delta_raw = pm.Normal(
-                    "delta_raw", mu_matrix, sigma_vec[:, None],
+                    "delta_raw",
+                    mu_matrix,
+                    sigma_vec[:, None],
                     shape=(n_pollsters, n_candidates),
                 )
             else:
@@ -534,13 +519,14 @@ def build_model(
                     "sigma_house", sigma=config.sigma_house_prior
                 )
                 delta_raw = pm.Normal(
-                    "delta_raw", mu_matrix, sigma_house,
+                    "delta_raw",
+                    mu_matrix,
+                    sigma_house,
                     shape=(n_pollsters, n_candidates),
                 )
             # Zero-mean constrain house effects across all K parties for each pollster
             delta_full = pm.Deterministic(
-                "delta",
-                delta_raw - pt.mean(delta_raw, axis=1, keepdims=True)
+                "delta", delta_raw - pt.mean(delta_raw, axis=1, keepdims=True)
             )
 
             eta_obs = eta_full[time_indices] + delta_full[poll_data.pollster_ids]
@@ -549,15 +535,13 @@ def build_model(
             mu_obs = pi[time_indices]
 
         # === Dirichlet observation model ===
-        sample_sizes = pt.as_tensor_variable(
-            poll_data.sample_sizes.reshape(-1, 1)
-        )
+        sample_sizes = pt.as_tensor_variable(poll_data.sample_sizes.reshape(-1, 1))
         if use_per_pollster_kappa:
             # Index per-pollster kappa_scale by poll's pollster
             kappa = kappa_scale[poll_data.pollster_ids, None] * sample_sizes
         else:
-            kappa = kappa_scale * sample_sizes           # (N, 1)
-        alpha_dir = pt.maximum(mu_obs * kappa, 0.01) # (N, K)
+            kappa = kappa_scale * sample_sizes  # (N, 1)
+        alpha_dir = pt.maximum(mu_obs * kappa, 0.01)  # (N, K)
 
         pm.Dirichlet("obs", a=alpha_dir, observed=observed_fractions)
 
@@ -653,9 +637,12 @@ def extract_results(
     time_grid = []
     if "first_poll_date" in metadata and "time_step_days" in metadata:
         from datetime import timedelta
+
         start = metadata["first_poll_date"]
         step = metadata["time_step_days"]
-        time_grid = [start + timedelta(days=i * step) for i in range(metadata["n_timesteps"])]
+        time_grid = [
+            start + timedelta(days=i * step) for i in range(metadata["n_timesteps"])
+        ]
 
     return ForecastResult(
         today_estimates=today_est,

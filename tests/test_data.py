@@ -53,9 +53,7 @@ class TestNormalisation:
 
 class TestExplicitCandidateColumns:
     def test_subset(self, polls_csv: Path):
-        result = load_polls(
-            polls_csv, candidate_columns=["Candidate_A", "Candidate_B"]
-        )
+        result = load_polls(polls_csv, candidate_columns=["Candidate_A", "Candidate_B"])
         assert result.candidates == ["Candidate_A", "Candidate_B"]
         assert result.poll_values.shape[1] == 2
 
@@ -170,8 +168,7 @@ class TestDecimalParameter:
         """Rows loaded with decimal=',' still normalise to 100%."""
         path = tmp_path / "comma_decimal_norm.csv"
         path.write_text(
-            "date,pollster,sample_size,A,B\n"
-            '2024-01-01,P,1000,"30,0","70,0"\n'
+            'date,pollster,sample_size,A,B\n2024-01-01,P,1000,"30,0","70,0"\n'
         )
         result = load_polls(path, decimal=",")
         np.testing.assert_allclose(result.poll_values.sum(axis=1), 100.0, atol=1e-10)

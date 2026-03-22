@@ -139,9 +139,7 @@ def load_polls(
         if not pd.api.types.is_numeric_dtype(df[col]):
             raise ValueError(f"Candidate column '{col}' must be numeric.")
         if (df[col] < 0).any():
-            raise ValueError(
-                f"Candidate column '{col}' contains negative values."
-            )
+            raise ValueError(f"Candidate column '{col}' contains negative values.")
 
     if not pd.api.types.is_numeric_dtype(df[sample_size_column]):
         raise ValueError(f"'{sample_size_column}' must be numeric.")

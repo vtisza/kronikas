@@ -94,7 +94,6 @@ def _parse_date(value: str | date | None, name: str) -> date:
             return datetime.fromisoformat(value).date()
         except ValueError:
             raise ValueError(
-                f"Cannot parse '{name}' as a date: {value!r}. "
-                "Use YYYY-MM-DD format."
+                f"Cannot parse '{name}' as a date: {value!r}. Use YYYY-MM-DD format."
             ) from None
     raise TypeError(f"'{name}' must be a str or datetime.date, got {type(value)}")
