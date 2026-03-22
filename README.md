@@ -1,5 +1,3 @@
-# kronikas
-
 [![PyPI version](https://img.shields.io/pypi/v/kronikas.svg)](https://pypi.org/project/kronikas/)
 [![Python versions](https://img.shields.io/pypi/pyversions/kronikas.svg)](https://pypi.org/project/kronikas/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -7,26 +5,32 @@
 [![Downloads](https://img.shields.io/pypi/dm/kronikas.svg)](https://pypi.org/project/kronikas/)
 [![DOI](https://zenodo.org/badge/1188801535.svg)](https://doi.org/10.5281/zenodo.19163741)
 
-Hierarchical Bayesian election forecasting from opinion polls.
+# kronikas
 
-## Overview
+**Principled election forecasting from opinion polls, powered by hierarchical Bayesian inference.**
 
-**kronikas** reads a CSV of opinion polls and fits a hierarchical Bayesian
-model to produce probabilistic forecasts for both the current date and election
-day.  The model includes:
+Most poll aggregators reduce rich, noisy data into a single point estimate and call it a day. *kronikas* does the opposite: it builds a full generative model of how public opinion evolves, learns each pollster's systematic biases, and propagates every source of uncertainty into honest probability distributions. The result is not just "Party A is at 42 %," but "Party A wins with 73 % probability, and here is the full distribution behind that number." If you are a political scientist, data journalist, election analyst, or anyone who needs defensible, reproducible forecasts from polling data, kronikas gives you a statistically rigorous engine you can trust, and customize, in a single `pip install`.
 
-- **Logistic-normal random walk** for latent candidate support in log-ratio
-  space, mapped to the probability simplex via softmax.
-- **Dirichlet observation model** that structurally guarantees predicted
-  shares sum to 100 %, with concentration tied to sample size.
-- **House effects** to capture systematic pollster biases (automatically
-  omitted when only one pollster is present).
+## Why kronikas?
 
-Inference is performed with the NUTS sampler via [PyMC](https://www.pymc.io/).
+- 🎯 **Probability over point estimates.** Full posterior distributions and win probabilities, not just a number. Every forecast comes with calibrated uncertainty so you know exactly what you don't know.
+- 🔧 **Systematic bias correction.** Automatically detects and corrects per-pollster house effects, cleanly separating genuine opinion shifts from firm-specific methodological bias.
+- 📐 **Structurally sound.** Dirichlet observations and softmax constraints guarantee that predicted vote shares are always non-negative and sum to exactly 100 %. No ad-hoc normalization needed.
+- ⚙️ **Highly configurable.** Flexible priors, per-pollster overrides, adjustable time grids, correlated random walks, and an escape hatch to any `pymc.sample()` kwarg. Shape the model to your domain knowledge.
+
+## Used in production
+
+kronikas is the forecasting engine behind **[százkilencvenkilenc.hu](https://www.szazkilencvenkilenc.hu/)**, where it powers live Hungarian election forecasts and tracks real-world polling shifts as they happen.
 
 ## Installation
 
-With [uv](https://docs.astral.sh/uv/) (recommended):
+The fastest way to get started:
+
+```bash
+pip install kronikas
+```
+
+For development, with [uv](https://docs.astral.sh/uv/) (recommended):
 
 ```bash
 uv sync --group dev
@@ -44,7 +48,7 @@ pip install -e ".[dev]"
 
 Each row is one poll.  Required columns: **date**, **pollster**,
 **sample_size**, plus one column per candidate with their support value
-(any scale -- values are normalised to 100 %).
+(any scale; values are normalised to 100 %).
 
 ```csv
 date,pollster,sample_size,Alice,Bob,Carol
@@ -90,7 +94,7 @@ result.trace
 ### 4. Party forecast as a DataFrame
 
 `party_forecast_dataframe()` returns all posterior draws as a
-`pandas.DataFrame` — one row per draw, one column per party named after
+`pandas.DataFrame`: one row per draw, one column per party named after
 the party.  Values are vote shares in percentage points.
 
 ```python
@@ -105,7 +109,7 @@ df_election = result.party_forecast_dataframe(day="election_day")
 # Each row sums to 100.0 (percentage points)
 ```
 
-Warmup iterations are never included — only the post-tuning posterior
+Warmup iterations are never included. Only the post-tuning posterior
 draws that PyMC keeps after sampling.
 
 Use these DataFrames for custom downstream analysis:
@@ -136,7 +140,7 @@ produced by that pollster's bias term.  Positive values mean the pollster
 over-estimates a candidate; negative values mean under-estimation.  Within
 each draw and pollster, values across all candidates sum to zero.
 
-The DataFrame uses a two-level column `MultiIndex` — the outer level is the
+The DataFrame uses a two-level column `MultiIndex`: the outer level is the
 pollster name and the inner level is the candidate name.
 
 ```python
@@ -271,12 +275,12 @@ All fields on `ModelConfig` with their defaults:
 | Parameter | Default | Description |
 |---|---|---|
 | `num_tune` | 1500 | Warmup (tuning) iterations per chain |
-| `num_draws` | 1000 | Posterior draws per chain (total samples = draws x chains) |
-| `num_chains` | 2 | Independent MCMC chains (>= 2 recommended for R-hat) |
+| `num_draws` | 1000 | Posterior draws per chain (total samples = draws × chains) |
+| `num_chains` | 2 | Independent MCMC chains (≥ 2 recommended for R-hat) |
 | `cores` | None | CPU cores for parallel sampling (None = auto-detect) |
-| `target_accept` | 0.95 | NUTS target acceptance rate (0.90-0.99) |
+| `target_accept` | 0.95 | NUTS target acceptance rate (0.90–0.99) |
 | `random_seed` | 42 | Reproducibility seed |
-| `init_method` | `"jitter+adapt_diag"` | NUTS initialisation (`"adapt_diag"`, `"adapt_full"`, ...) |
+| `init_method` | `"jitter+adapt_diag"` | NUTS initialisation (`"adapt_diag"`, `"adapt_full"`, …) |
 | `progressbar` | True | Show progress bar during sampling |
 | `sampler_kwargs` | `{}` | Extra kwargs forwarded to `pymc.sample()` |
 
@@ -314,9 +318,9 @@ from kronikas import ElectionForecast, ModelConfig, PollsterPrior
 
 config = ModelConfig(
     pollster_priors={
-        # PollCo has a known small bias — constrain its house effect
+        # PollCo has a known small bias, constrain its house effect
         "PollCo": PollsterPrior(sigma_house=0.1),
-        # SurveyInc uses an online panel — allow more overdispersion
+        # SurveyInc uses an online panel, allow more overdispersion
         "SurveyInc": PollsterPrior(kappa_log_sigma=1.0),
     },
 )
@@ -356,7 +360,7 @@ global value from `ModelConfig`:
 
 Use `mu_house` when you have external knowledge that a pollster
 systematically leans toward or against a specific candidate.  Values are
-in **percentage points** — specify the expected bias directly.  You only
+in **percentage points**. Specify the expected bias directly.  You only
 need to list the candidates you want to set; the rest default to 0 pp.
 
 ```python
@@ -385,7 +389,7 @@ result = ElectionForecast(
 ).run()
 ```
 
-Pollsters without a `mu_house` entry keep the default zero mean — only
+Pollsters without a `mu_house` entry keep the default zero mean; only
 the pollsters you explicitly configure are affected.  Values are converted
 to logit space internally using a 50 % support baseline.
 
@@ -411,16 +415,31 @@ az.summary(result.trace)
 az.plot_trace(result.trace, var_names=["sigma_walk", "kappa_log"])
 ```
 
-## Running tests
+## Contributing
 
-```bash
-# Fast tests only (no MCMC sampling)
-uv run pytest tests/ -m "not slow"
+We welcome contributions of all kinds: bug reports, feature ideas, documentation improvements, and code. Whether you're fixing a typo or building a new feature, we'd love to have you involved.
 
-# Full suite including inference tests
-uv run pytest tests/
+👉 **See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding guidelines, and how to submit a pull request.**
+
+## Citation
+
+[![DOI](https://zenodo.org/badge/1188801535.svg)](https://doi.org/10.5281/zenodo.19163741)
+
+If you use kronikas in your research, please cite it:
+
+```bibtex
+@software{Tisza_kronikas_2026,
+  author = {Tisza, Viktor},
+  title = {kronikas},
+  month = {3},
+  year = {2026},
+  publisher = {Zenodo},
+  version = {0.1.0},
+  doi = {10.5281/zenodo.19163741},
+  url = {https://github.com/vtisza/kronikas}
+}
 ```
 
 ## License
 
-Apache 2.0
+This project is licensed under the [Apache License 2.0](LICENSE).
