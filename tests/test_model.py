@@ -44,7 +44,7 @@ class TestBuildModel:
         assert meta["include_house_effects"] is True
         names = {v.name for v in model.free_RVs}
         assert "sigma_house" in names
-        assert "delta" in names
+        assert "delta_raw" in names
 
     def test_no_house_effects_single_pollster(
         self, single_pollster_csv, election_date, today, fast_config
@@ -55,7 +55,7 @@ class TestBuildModel:
         model, meta = build_model(data, election_date, today, fast_config)
         assert meta["include_house_effects"] is False
         names = {v.name for v in model.free_RVs}
-        assert "delta" not in names
+        assert "delta_raw" not in names
 
     def test_election_before_polls_raises(self, poll_data, fast_config):
         with pytest.raises(ValueError, match="after the first poll"):
@@ -93,7 +93,7 @@ class TestPollsterPriors:
         )
         model, meta = build_model(poll_data, election_date, today, config)
         names = {v.name for v in model.free_RVs}
-        assert "delta" in names
+        assert "delta_raw" in names
         # sigma_house still needed for the non-overridden pollster
         assert "sigma_house" in names
         assert meta["include_house_effects"] is True
@@ -117,7 +117,7 @@ class TestPollsterPriors:
         )
         model, meta = build_model(poll_data, election_date, today, config)
         names = {v.name for v in model.free_RVs}
-        assert "delta" in names
+        assert "delta_raw" in names
         # No hierarchical sigma_house needed
         assert "sigma_house" not in names
 
@@ -181,7 +181,7 @@ class TestPollsterPriors:
         )
         model, _ = build_model(poll_data, election_date, today, config)
         names = {v.name for v in model.free_RVs}
-        assert "delta" in names
+        assert "delta_raw" in names
         assert "kappa_log" in names
         assert "sigma_house" in names  # still needed for SurveyInc
 
