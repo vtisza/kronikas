@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: kronikas
+abstract: "A hierarchical Bayesian framework for probabilistic election forecasting from opinion polls."
+authors:
+  - family-names: Tisza
+    given-names: Viktor
+    email: vtisza@gmail.com
+    orcid: "https://orcid.org/0009-0007-9544-8332"
+repository-code: "https://github.com/vtisza/kronikas"
+url: "https://www.szazkilencvenkilenc.hu"
+license: Apache-2.0
+version: 0.1.0
+date-released: "2026-03-22"
+keywords:
+  - election forecasting
+  - bayesian inference
+  - poll aggregation
+  - hierarchical models
+  - political science
+  - pymc

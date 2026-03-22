@@ -1,0 +1,22 @@
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-citation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update CITATION.cff version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}   # strips leading "v" from tag
+          DATE=$(date +%Y-%m-%d)
+          sed -i "s/^version:.*/version: $VERSION/" CITATION.cff
+          sed -i "s/^date-released:.*/date-released: \"$DATE\"/" CITATION.cff
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add CITATION.cff
+          git commit -m "chore: update CITATION.cff to $GITHUB_REF_NAME"
+          git push
