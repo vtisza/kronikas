@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/kronikas.svg)](https://pypi.org/project/kronikas/)
 [![Python versions](https://img.shields.io/pypi/pyversions/kronikas.svg)](https://pypi.org/project/kronikas/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Tests](https://github.com/vtisza/kronikas/actions/workflows/tests.yml/badge.svg)](https://github.com/vtisza/kronikas/actions)
+[![Tests](https://github.com/vtisza/kronikas/actions/workflows/ci.yml/badge.svg)](https://github.com/vtisza/kronikas/actions)
 [![Downloads](https://img.shields.io/pypi/dm/kronikas.svg)](https://pypi.org/project/kronikas/)
 [![DOI](https://zenodo.org/badge/1188801535.svg)](https://doi.org/10.5281/zenodo.19163741)
 
