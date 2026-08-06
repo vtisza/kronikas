@@ -43,6 +43,7 @@ Run `make` (or `make help`) to see all available targets:
 | `make lint` | Run ruff linter |
 | `make format` | Format code with ruff |
 | `make check` | Run linter and format check (no changes, CI-friendly) |
+| `make typecheck` | Run mypy over the package |
 | `make test` | Run the full test suite |
 | `make test-fast` | Run fast tests only (no MCMC sampling) |
 | `make clean` | Remove build artifacts and caches |
@@ -51,11 +52,15 @@ Run `make` (or `make help`) to see all available targets:
 
 ```
 src/kronikas/
-    __init__.py      # Public API (ElectionForecast, ModelConfig, load_polls)
-    config.py        # ModelConfig dataclass
-    data.py          # CSV loading and validation
+    __init__.py      # Public API
+    backtest.py      # Refit at past dates and score against the true result
+    cli.py           # `kronikas` command-line entry point
+    config.py        # ModelConfig / PollsterPrior dataclasses
+    data.py          # CSV and DataFrame loading, validation, filtering
+    diagnostics.py   # Sampler convergence diagnostics
     forecast.py      # ElectionForecast orchestrator
     model.py         # PyMC model building, inference, and result extraction
+    py.typed         # PEP 561 marker
 tests/
     conftest.py      # Shared fixtures
     test_*.py        # Test modules
@@ -68,14 +73,19 @@ make test-fast   # Fast tests only (no MCMC sampling) — use during development
 make test        # Full suite including inference tests
 ```
 
+Tests that run MCMC are marked `@pytest.mark.slow`. `make test-fast` deselects
+them, which makes it a poor gate on its own: it skips the entire sampling path.
+Run `make test` before opening a pull request. CI runs both, and the full suite
+takes a few minutes.
+
 Please make sure all tests pass before submitting a pull request.
 
 ## Making changes
 
-1. Create a feature branch from `master`:
+1. Create a feature branch from `main`:
 
    ```bash
-   git checkout -b my-feature master
+   git checkout -b my-feature main
    ```
 
 2. Make your changes. Keep commits focused and write clear commit messages.
@@ -83,11 +93,14 @@ Please make sure all tests pass before submitting a pull request.
 3. Add or update tests for any new or changed behaviour. Tests live in the
    `tests/` directory and use pytest.
 
-4. Run `make check` to ensure your code passes linting and formatting.
+4. Run `make check` and `make typecheck` to ensure your code passes linting,
+   formatting, and type checking.
 
 5. Run `make test` to verify nothing is broken.
 
-6. Push your branch and open a pull request against `master`.
+6. Add an entry to `CHANGELOG.md` under "Unreleased".
+
+7. Push your branch and open a pull request against `main`.
 
 ## Code style
 
@@ -120,7 +133,8 @@ The Ruff configuration lives in `pyproject.toml` and enforces:
 Additional style guidelines:
 
 - Keep functions and methods focused — prefer small, well-named functions.
-- Use type hints for public API signatures.
+- Use type hints for public API signatures. The package ships `py.typed`, so
+  annotations are part of the public contract; `make typecheck` must pass.
 
 ## Reporting bugs and requesting features
 

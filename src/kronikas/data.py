@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -35,6 +35,58 @@ class PollData:
     candidates: list[str]
     pollsters: list[str]
     first_poll_date: date
+
+    @property
+    def poll_dates(self) -> list[date]:
+        """Calendar date of every poll, in row order."""
+        return [self.first_poll_date + timedelta(days=int(d)) for d in self.dates]
+
+    @property
+    def last_poll_date(self) -> date:
+        """Calendar date of the most recent poll."""
+        return self.first_poll_date + timedelta(days=int(self.dates.max()))
+
+    def up_to(self, cutoff: date) -> PollData:
+        """Return a copy containing only polls taken on or before *cutoff*.
+
+        Used by :func:`kronikas.backtest.backtest` to reconstruct the
+        information available at a past point in time.  Pollsters that drop out
+        entirely are removed and the remaining pollster indices renumbered, so
+        the result is indistinguishable from data loaded fresh.
+
+        Parameters
+        ----------
+        cutoff:
+            Inclusive upper bound on poll dates.
+
+        Raises
+        ------
+        ValueError
+            If no polls remain on or before *cutoff*.
+        """
+        mask = np.array([d <= cutoff for d in self.poll_dates], dtype=bool)
+        if not mask.any():
+            raise ValueError(
+                f"No polls on or before {cutoff}; the earliest poll is "
+                f"{self.first_poll_date}."
+            )
+
+        names = [self.pollsters[i] for i in self.pollster_ids[mask]]
+        remaining = sorted(set(names))
+        remap = {name: i for i, name in enumerate(remaining)}
+
+        kept_dates = [d for d, keep in zip(self.poll_dates, mask, strict=True) if keep]
+        new_first = min(kept_dates)
+
+        return PollData(
+            dates=np.array([(d - new_first).days for d in kept_dates], dtype=np.int64),
+            pollster_ids=np.array([remap[n] for n in names], dtype=np.int64),
+            sample_sizes=self.sample_sizes[mask].copy(),
+            poll_values=self.poll_values[mask].copy(),
+            candidates=list(self.candidates),
+            pollsters=remaining,
+            first_poll_date=new_first,
+        )
 
 
 def load_polls(
@@ -90,6 +142,70 @@ def load_polls(
         raise FileNotFoundError(f"Poll CSV not found: {csv_path}")
 
     df = pd.read_csv(csv_path, decimal=decimal)
+
+    return polls_from_dataframe(
+        df,
+        date_column=date_column,
+        pollster_column=pollster_column,
+        sample_size_column=sample_size_column,
+        candidate_columns=candidate_columns,
+        date_format=date_format,
+    )
+
+
+def polls_from_dataframe(
+    df: pd.DataFrame,
+    *,
+    date_column: str = "date",
+    pollster_column: str = "pollster",
+    sample_size_column: str = "sample_size",
+    candidate_columns: list[str] | None = None,
+    date_format: str | None = None,
+) -> PollData:
+    """Validate and normalise polls held in a :class:`pandas.DataFrame`.
+
+    Identical to :func:`load_polls` but takes an in-memory frame, so data
+    arriving from a database, an API, or an upstream cleaning step does not
+    have to be round-tripped through a temporary CSV.  The input is not
+    modified.
+
+    Parameters
+    ----------
+    df:
+        One row per poll.  See :func:`load_polls` for the expected schema.
+    date_column, pollster_column, sample_size_column, candidate_columns,
+    date_format:
+        As documented on :func:`load_polls`.
+
+    Returns
+    -------
+    PollData
+        Validated, normalised, date-sorted poll data.
+
+    Raises
+    ------
+    ValueError
+        On schema violations (missing columns, non-numeric candidates,
+        negative values, etc.).
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from kronikas import polls_from_dataframe
+    >>> frame = pd.DataFrame(
+    ...     {
+    ...         "date": ["2024-01-15", "2024-02-01"],
+    ...         "pollster": ["PollCo", "SurveyInc"],
+    ...         "sample_size": [1000, 1200],
+    ...         "Alice": [45.0, 44.0],
+    ...         "Bob": [55.0, 56.0],
+    ...     }
+    ... )
+    >>> data = polls_from_dataframe(frame)
+    >>> data.candidates
+    ['Alice', 'Bob']
+    """
+    df = df.copy()
 
     # --- required columns ---------------------------------------------------
     meta_cols = {date_column, pollster_column, sample_size_column}
