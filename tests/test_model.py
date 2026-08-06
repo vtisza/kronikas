@@ -194,7 +194,7 @@ class TestInferenceEndToEnd:
         model, meta = build_model(poll_data, election_date, today, fast_config)
         trace = run_inference(model, fast_config)
 
-        result = extract_results(trace, poll_data, meta)
+        result = extract_results(trace, poll_data, meta, config=fast_config)
         assert isinstance(result, ForecastResult)
 
         # One estimate per candidate
@@ -214,11 +214,11 @@ class TestInferenceEndToEnd:
     def test_summary_string(self, poll_data, election_date, today, fast_config):
         model, meta = build_model(poll_data, election_date, today, fast_config)
         trace = run_inference(model, fast_config)
-        result = extract_results(trace, poll_data, meta)
+        result = extract_results(trace, poll_data, meta, config=fast_config)
 
         text = result.summary()
         assert "Election Forecast Summary" in text
-        assert "Win probabilities" in text
+        assert "Plurality probabilities" in text
         for c in poll_data.candidates:
             assert c in text
 
@@ -232,7 +232,7 @@ class TestPartyForecastDataframe:
     ):
         model, meta = build_model(poll_data, election_date, today, fast_config)
         trace = run_inference(model, fast_config)
-        result = extract_results(trace, poll_data, meta)
+        result = extract_results(trace, poll_data, meta, config=fast_config)
 
         df = result.party_forecast_dataframe(day="today")
         expected_draws = fast_config.num_draws * fast_config.num_chains
@@ -246,7 +246,7 @@ class TestPartyForecastDataframe:
     ):
         model, meta = build_model(poll_data, election_date, today, fast_config)
         trace = run_inference(model, fast_config)
-        result = extract_results(trace, poll_data, meta)
+        result = extract_results(trace, poll_data, meta, config=fast_config)
 
         df = result.party_forecast_dataframe(day="election_day")
         expected_draws = fast_config.num_draws * fast_config.num_chains
@@ -260,7 +260,7 @@ class TestPartyForecastDataframe:
     ):
         model, meta = build_model(poll_data, election_date, today, fast_config)
         trace = run_inference(model, fast_config)
-        result = extract_results(trace, poll_data, meta)
+        result = extract_results(trace, poll_data, meta, config=fast_config)
 
         for day in ("today", "election_day"):
             df = result.party_forecast_dataframe(day=day)
@@ -278,7 +278,7 @@ class TestPartyForecastDataframe:
     def test_default_day_is_today(self, poll_data, election_date, today, fast_config):
         model, meta = build_model(poll_data, election_date, today, fast_config)
         trace = run_inference(model, fast_config)
-        result = extract_results(trace, poll_data, meta)
+        result = extract_results(trace, poll_data, meta, config=fast_config)
 
         df_default = result.party_forecast_dataframe()
         df_today = result.party_forecast_dataframe(day="today")
@@ -310,7 +310,7 @@ class TestHouseEffectsDataframe:
     def test_shape_and_columns(self, poll_data, election_date, today, fast_config):
         model, meta = build_model(poll_data, election_date, today, fast_config)
         trace = run_inference(model, fast_config)
-        result = extract_results(trace, poll_data, meta)
+        result = extract_results(trace, poll_data, meta, config=fast_config)
 
         df = result.house_effects_dataframe()
         expected_draws = fast_config.num_draws * fast_config.num_chains
@@ -336,7 +336,7 @@ class TestHouseEffectsDataframe:
         """Within each draw and pollster, deviations across candidates sum to zero."""
         model, meta = build_model(poll_data, election_date, today, fast_config)
         trace = run_inference(model, fast_config)
-        result = extract_results(trace, poll_data, meta)
+        result = extract_results(trace, poll_data, meta, config=fast_config)
 
         df = result.house_effects_dataframe()
         for pollster in poll_data.pollsters:
@@ -353,7 +353,7 @@ class TestHouseEffectsDataframe:
         """House effects in percentage points are bounded by ±100."""
         model, meta = build_model(poll_data, election_date, today, fast_config)
         trace = run_inference(model, fast_config)
-        result = extract_results(trace, poll_data, meta)
+        result = extract_results(trace, poll_data, meta, config=fast_config)
 
         df = result.house_effects_dataframe()
         assert (df.values > -100).all(), "House effect below -100pp"

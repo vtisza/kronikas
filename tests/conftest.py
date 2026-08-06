@@ -65,7 +65,12 @@ def poll_data(polls_csv: Path):
 
 @pytest.fixture()
 def fast_config() -> ModelConfig:
-    """Minimal sampler settings for fast test runs."""
+    """Minimal sampler settings for fast test runs.
+
+    The convergence thresholds are relaxed to near-nothing: 50 draws from a
+    single chain cannot possibly meet the production defaults, and these tests
+    assert on plumbing rather than on inference quality.
+    """
     return ModelConfig(
         num_tune=50,
         num_draws=50,
@@ -75,6 +80,8 @@ def fast_config() -> ModelConfig:
         time_step_days=30,
         random_seed=123,
         progressbar=False,
+        ess_threshold=1.0,
+        r_hat_threshold=100.0,
     )
 
 

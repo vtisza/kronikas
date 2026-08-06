@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -72,12 +73,31 @@ class ModelConfig:
             to ``pymc.sample()``.  Use this for advanced settings not
             exposed above (e.g. ``nuts_sampler``, ``idata_kwargs``,
             ``compile_kwargs``).
+        compute_log_likelihood: If True, ask PyMC to store the pointwise
+            log-likelihood in the returned ``InferenceData``.  Required for
+            model comparison with ``arviz.loo`` / ``arviz.waic``.  Adds an
+            ``(chains, draws, n_polls)`` array to the trace, so it is off by
+            default.
         time_step_days: Time discretisation granularity in days.  Polls are
             binned to the nearest step.  Weekly (7) balances resolution and
-            speed.
+            speed.  The time grid is anchored so that its **last node falls
+            exactly on election day**; the grid therefore starts on or just
+            before the first poll.
         sigma_walk_prior: Scale (``HalfNormal``) for the random-walk SD in
-            logit space.  Smaller values produce smoother trends; 0.05
+            logit space, expressed **per ``walk_reference_days`` days** rather
+            than per time step.  Smaller values produce smoother trends; 0.05
             corresponds to roughly 1 pp weekly movement at 50 % support.
+            Because the prior is defined on a fixed calendar interval, changing
+            ``time_step_days`` no longer changes the implied volatility of the
+            trend (see ``walk_reference_days``).
+        walk_reference_days: Calendar interval, in days, that
+            ``sigma_walk_prior`` refers to.  The per-step prior scale actually
+            handed to the sampler is
+            ``sigma_walk_prior * sqrt(time_step_days / walk_reference_days)``,
+            which keeps the variance accumulated over any fixed calendar
+            window invariant to the grid resolution.  With the defaults
+            (both 7) the per-step scale equals ``sigma_walk_prior`` exactly,
+            matching the behaviour of earlier versions.
         sigma_house_prior: Scale (``HalfNormal``) for house-effect SD in
             logit space.  0.3 allows up to ~5 pp systematic pollster bias.
         initial_sigma: SD of the ``Normal`` prior on the initial log-ratios.
@@ -91,13 +111,13 @@ class ModelConfig:
         correlated_walk: If True, replace the scalar ``sigma_walk`` with a
             full covariance structure for the random-walk innovations using
             an ``LKJCholeskyCov`` prior.  This lets the model learn
-            inter-party correlations (e.g. Fidesz gains typically coincide
-            with TISZA losses in a two-bloc system).  Each log-ratio
-            dimension gets its own SD (prior set by ``sigma_walk_prior``)
-            and a correlation matrix is estimated.  **Warning:** increases
-            model complexity by O(K²) parameters and may require higher
-            ``target_accept`` (0.97–0.99) to avoid divergences.
-            Default ``False``.
+            inter-party correlations — for example, that gains for one bloc
+            typically coincide with losses for its main rival.  Each
+            log-ratio dimension gets its own SD (prior set by
+            ``sigma_walk_prior``, rescaled the same way) and a correlation
+            matrix is estimated.  **Warning:** increases model complexity by
+            O(K²) parameters and may require higher ``target_accept``
+            (0.97–0.99) to avoid divergences.  Default ``False``.
         lkj_eta: Shape parameter of the LKJ prior on the correlation
             matrix, used only when ``correlated_walk`` is True.  Controls
             how strongly the prior favours identity-like (low correlation)
@@ -107,10 +127,15 @@ class ModelConfig:
             - ``eta = 2.0``: mildly favours weaker correlations (default).
             - ``eta ≥ 5.0``: strongly favours near-independent dimensions.
 
-            In a two-bloc system like Hungary, ``eta = 2.0`` is a good
-            default — it allows the strong Fidesz–TISZA anti-correlation
-            to emerge while regularising poorly-identified small-party
-            correlations toward zero.
+            ``eta = 2.0`` is a reasonable default for most party systems: it
+            lets a strong anti-correlation between two dominant parties
+            emerge from the data while regularising poorly-identified
+            small-party correlations toward zero.
+        r_hat_threshold: Convergence warning threshold for the Gelman–Rubin
+            statistic.  After sampling, a warning is emitted if any parameter
+            exceeds this value.  Requires at least 2 chains to be computable.
+        ess_threshold: Convergence warning threshold for the minimum bulk
+            effective sample size across parameters.
     """
 
     # Sampler
@@ -122,6 +147,7 @@ class ModelConfig:
     random_seed: int = 42
     init_method: str = "jitter+adapt_diag"
     progressbar: bool = True
+    compute_log_likelihood: bool = False
     sampler_kwargs: dict[str, Any] = field(default_factory=dict)
 
     # Time discretisation
@@ -129,9 +155,14 @@ class ModelConfig:
 
     # Priors (logit / log-ratio scale)
     sigma_walk_prior: float = 0.05
+    walk_reference_days: int = 7
     sigma_house_prior: float = 0.3
     initial_sigma: float = 0.5
     kappa_log_sigma: float = 0.5
+
+    # Convergence warning thresholds
+    r_hat_threshold: float = 1.01
+    ess_threshold: float = 400.0
 
     # Correlated random walk
     correlated_walk: bool = False
@@ -139,3 +170,33 @@ class ModelConfig:
 
     # Per-pollster prior overrides
     pollster_priors: dict[str, PollsterPrior] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.time_step_days < 1:
+            raise ValueError(
+                f"time_step_days must be a positive integer, got {self.time_step_days}."
+            )
+        if self.walk_reference_days < 1:
+            raise ValueError(
+                "walk_reference_days must be a positive integer, "
+                f"got {self.walk_reference_days}."
+            )
+        for name in ("sigma_walk_prior", "sigma_house_prior", "initial_sigma"):
+            value = getattr(self, name)
+            if value <= 0:
+                raise ValueError(f"{name} must be positive, got {value}.")
+
+    @property
+    def per_step_walk_sigma(self) -> float:
+        """Prior scale for a single random-walk step.
+
+        ``sigma_walk_prior`` is expressed per ``walk_reference_days`` days.
+        Rescaling by ``sqrt(time_step_days / walk_reference_days)`` keeps the
+        variance accumulated over a fixed calendar window independent of the
+        grid resolution, so changing ``time_step_days`` alters the time
+        resolution of the trend without also changing how volatile the prior
+        says it is.
+        """
+        return self.sigma_walk_prior * math.sqrt(
+            self.time_step_days / self.walk_reference_days
+        )

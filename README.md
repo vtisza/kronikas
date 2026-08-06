@@ -83,13 +83,31 @@ print(result.summary())
 for est in result.today_estimates:
     print(f"{est.name}: {est.mean:.1f}% (90% CI: {est.ci_lower:.1f}%-{est.ci_upper:.1f}%)")
 
-# Win probabilities (election day)
+# Plurality probabilities (election day): P(this candidate polls highest)
 for name, prob in result.win_probabilities.items():
     print(f"{name}: {prob:.1%}")
+
+# Probability of clearing a vote-share threshold (e.g. an electoral threshold)
+for name, prob in result.threshold_probabilities(5.0).items():
+    print(f"{name} reaches 5%: {prob:.1%}")
+
+# Head-to-head comparison
+print(result.lead_probability("Alice", "Bob"))
+
+# Sampler convergence diagnostics
+print(result.diagnostics.summary())
 
 # Full ArviZ InferenceData for custom analysis
 result.trace
 ```
+
+> **What `win_probabilities` measures.** It is the probability of holding a
+> **plurality of the vote share** — of polling higher than every other
+> candidate on election day. Under electoral systems that are not simple
+> national plurality (runoffs, district seat allocation, electoral colleges,
+> coalition formation), that is not the probability of winning office. Treat it
+> as a vote-share statistic and build any seat or office model on top of
+> `party_forecast_dataframe()`.
 
 ### 4. Party forecast as a DataFrame
 
@@ -158,7 +176,30 @@ df_he["PollCo"]["Alice"].plot.hist(bins=40, edgecolor="white")
 A `RuntimeError` is raised when the model was run with a single pollster
 (house effects are not identifiable in that case).
 
-### 6. Customise priors and sampler
+### 6. Save a forecast and reload it later
+
+Sampling takes minutes, so a run worth keeping should not have to be repeated.
+`save()` writes the full posterior to netCDF; `load()` rebuilds an equivalent
+`ForecastResult`.
+
+```python
+result.save("forecast-2024-03-20.nc")
+
+from kronikas import ForecastResult
+restored = ForecastResult.load("forecast-2024-03-20.nc")
+```
+
+For publishing just the numbers, `to_dict()` returns a small JSON-serialisable
+summary with no posterior draws attached:
+
+```python
+import json
+
+payload = result.to_dict(thresholds=[5.0])
+print(json.dumps(payload, indent=2))
+```
+
+### 7. Customise priors and sampler
 
 ```python
 config = ModelConfig(
@@ -175,7 +216,7 @@ config = ModelConfig(
     time_step_days=3,              # finer time resolution
 
     # --- Priors (logit scale) ---
-    sigma_walk_prior=0.03,         # smoother trend
+    sigma_walk_prior=0.03,         # smoother trend, per `walk_reference_days`
     sigma_house_prior=0.2,         # tighter house-effect prior
     initial_sigma=0.3,             # tighter prior on initial support
     kappa_log_sigma=0.3,           # tighter poll-precision prior
@@ -231,6 +272,121 @@ ElectionForecast(
 
 `decimal` defaults to `"."` and accepts any single character.
 
+### Polls already in memory
+
+When the data comes from a database or an upstream cleaning step, skip the CSV
+round-trip:
+
+```python
+from kronikas import ElectionForecast, polls_from_dataframe
+
+forecast = ElectionForecast.from_dataframe(polls_frame, election_date="2024-11-05")
+result = forecast.run()
+
+# Or validate/normalise a frame on its own:
+poll_data = polls_from_dataframe(polls_frame)
+```
+
+`from_dataframe` accepts the same column-name overrides as the constructor, and
+never mutates the frame you pass it.
+
+## Command line
+
+Installing the package puts a `kronikas` executable on your path, so a
+scheduled job can produce machine-readable output without a Python wrapper:
+
+```bash
+# Human-readable summary
+kronikas forecast polls.csv --election-date 2024-11-05
+
+# JSON to a file, with threshold probabilities, quiet enough for cron
+kronikas forecast polls.csv \
+    --election-date 2024-11-05 \
+    --threshold 5 --threshold 10 \
+    --json forecast.json \
+    --save-trace forecast.nc \
+    --quiet
+
+# Score the model against a past election
+kronikas backtest polls.csv \
+    --election-date 2024-11-05 \
+    --as-of 2024-08-01 --as-of 2024-10-01 \
+    --actual "Alice=48.2,Bob=47.1,Carol=4.7"
+```
+
+`kronikas forecast` exits non-zero when the sampler reports a convergence
+problem, so a scheduled run fails loudly instead of publishing bad numbers.
+Run `kronikas forecast --help` for the full option list, including sampler
+settings and CSV schema overrides.
+
+## Backtesting
+
+A forecast that has never been scored is an assertion, not a measurement.
+`backtest()` replays a campaign: for each *as-of* date it discards every later
+poll, refits, and records what the model would have said about election day
+knowing only what was available then.
+
+```python
+from datetime import date
+from kronikas import backtest
+
+report = backtest(
+    "polls.csv",
+    election_date=date(2024, 11, 5),
+    as_of_dates=[date(2024, 8, 1), date(2024, 9, 1), date(2024, 10, 1)],
+    actual={"Alice": 48.2, "Bob": 47.1, "Carol": 4.7},
+)
+
+print(report.summary())
+report.to_dataframe()   # tidy: one row per (as-of date, candidate)
+report.metrics()        # MAE, RMSE, 90% coverage, per-candidate bias
+```
+
+`actual` accepts any scale — percentages, fractions, or raw vote counts — and
+is normalised the same way polls are.
+
+Two notes on reading the output. **Coverage** is the calibration check that
+matters most: 90 % credible intervals should contain the truth about 90 % of
+the time, and much less means the model is overconfident. **Bias is reported
+per candidate, never pooled** — forecast and actual shares both sum to 100, so
+signed errors cancel exactly across candidates and a pooled mean would be
+identically zero.
+
+Each as-of date costs one full MCMC fit, so lower `num_draws` for exploratory
+runs.
+
+## Convergence diagnostics
+
+Every result carries the headline sampler statistics, and a
+`ConvergenceWarning` is raised when something looks wrong — so a script cannot
+quietly go on to print confident-looking numbers from chains that never mixed.
+
+```python
+result = forecast.run()
+
+print(result.diagnostics.summary())
+result.diagnostics.converged      # False if R-hat, ESS, or divergences look bad
+result.diagnostics.issues         # problems detected
+result.diagnostics.notes          # caveats, e.g. R-hat needs >= 2 chains
+```
+
+Thresholds are configurable via `ModelConfig(r_hat_threshold=..., ess_threshold=...)`.
+
+A single-chain run reports `converged=True` with a note, not a failure: one
+chain leaves convergence *unverified* rather than demonstrating a problem. Use
+`num_chains >= 2` to actually check it.
+
+For model comparison, set `compute_log_likelihood=True` to populate the trace's
+`log_likelihood` group for `arviz.loo` / `arviz.waic`:
+
+```python
+config = ModelConfig(compute_log_likelihood=True)
+result = ElectionForecast("polls.csv", "2024-11-05", config=config).run()
+
+import arviz as az
+print(az.loo(result.trace))
+```
+
 ## Model
 
 The model has three components:
@@ -241,6 +397,16 @@ The model has three components:
    discretised time grid (default: weekly steps).  Softmax maps the
    log-ratios back to the probability simplex, guaranteeing non-negative
    shares that sum to 1.
+
+   The grid is anchored **backwards from election day**, so its final node
+   falls exactly on the election date and the election-day forecast is not
+   contaminated by an extra partial step of drift.  The grid therefore starts
+   on or just before the first poll.
+
+   The random-walk prior `sigma_walk_prior` is expressed per
+   `walk_reference_days` (7 by default) rather than per time step, so changing
+   `time_step_days` changes the resolution of the trend without also changing
+   how volatile the prior says it is.
 
 2. **House effects.**
    Each pollster gets a bias term in log-ratio space, drawn from a
@@ -282,22 +448,26 @@ All fields on `ModelConfig` with their defaults:
 | `random_seed` | 42 | Reproducibility seed |
 | `init_method` | `"jitter+adapt_diag"` | NUTS initialisation (`"adapt_diag"`, `"adapt_full"`, …) |
 | `progressbar` | True | Show progress bar during sampling |
+| `compute_log_likelihood` | False | Store pointwise log-likelihood for `arviz.loo` / `waic` |
 | `sampler_kwargs` | `{}` | Extra kwargs forwarded to `pymc.sample()` |
 
 **Time discretisation**
 
 | Parameter | Default | Description |
 |---|---|---|
-| `time_step_days` | 7 | Time-grid granularity in days |
+| `time_step_days` | 7 | Time-grid granularity in days (grid ends exactly on election day) |
 
 **Priors (logit / log-ratio scale)**
 
 | Parameter | Default | Description |
 |---|---|---|
-| `sigma_walk_prior` | 0.05 | HalfNormal scale for random-walk SD (~1 pp/week at 50 %) |
+| `sigma_walk_prior` | 0.05 | HalfNormal scale for random-walk SD, per `walk_reference_days` (~1 pp/week at 50 %) |
+| `walk_reference_days` | 7 | Calendar window `sigma_walk_prior` refers to; keeps implied volatility grid-invariant |
 | `sigma_house_prior` | 0.3 | HalfNormal scale for house-effect SD (~5 pp max bias) |
 | `initial_sigma` | 0.5 | Normal SD for initial latent support |
 | `kappa_log_sigma` | 0.5 | SD of log-normal prior on poll precision scaling factor |
+| `r_hat_threshold` | 1.01 | R-hat above this triggers a `ConvergenceWarning` |
+| `ess_threshold` | 400.0 | Minimum bulk ESS below which a `ConvergenceWarning` is raised |
 | `correlated_walk` | False | Enables LKJ-correlated random walk innovations rather than independent ones |
 | `lkj_eta` | 2.0 | Shape parameter for LKJ matrix prior (used when `correlated_walk=True`) |
 
@@ -339,7 +509,7 @@ global value from `ModelConfig`:
 |---|---|---|
 | `sigma_house` | None (uses `sigma_house_prior`) | Fixed house-effect SD for this pollster in logit space. Lower = more trusted. |
 | `kappa_log_sigma` | None (uses `kappa_log_sigma`) | SD of log-normal prior on this pollster's precision scaling. Higher = allow more overdispersion. |
-| `mu_house` | None (all zeros) | Dict mapping candidate name to expected bias in **percentage points**. Positive = over-estimates, negative = under-estimates. Omitted candidates default to 0 pp. Must be in (-50, 50). |
+| `mu_house` | None (all zeros) | Dict mapping candidate name to expected bias in **percentage points**. Positive = over-estimates, negative = under-estimates. Omitted candidates default to 0 pp. Converted to logit space relative to that candidate's own support level, so the bias must not push it outside (0 %, 100 %). |
 
 **How it works:**
 

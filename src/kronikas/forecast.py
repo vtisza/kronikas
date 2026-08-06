@@ -5,8 +5,10 @@ from __future__ import annotations
 from datetime import date, datetime
 from pathlib import Path
 
+import pandas as pd
+
 from .config import ModelConfig
-from .data import PollData, load_polls
+from .data import PollData, load_polls, polls_from_dataframe
 from .model import ForecastResult, build_model, extract_results, run_inference
 
 
@@ -72,13 +74,57 @@ class ElectionForecast:
             decimal=decimal,
         )
 
+    @classmethod
+    def from_dataframe(
+        cls,
+        polls: pd.DataFrame,
+        election_date: str | date,
+        *,
+        today: str | date | None = None,
+        config: ModelConfig | None = None,
+        date_column: str = "date",
+        pollster_column: str = "pollster",
+        sample_size_column: str = "sample_size",
+        candidate_columns: list[str] | None = None,
+        date_format: str | None = None,
+    ) -> ElectionForecast:
+        """Build a forecast from an in-memory :class:`pandas.DataFrame`.
+
+        Equivalent to the constructor but skips the CSV round-trip, for data
+        that already lives in memory.
+
+        Examples
+        --------
+        >>> forecast = ElectionForecast.from_dataframe(  # doctest: +SKIP
+        ...     polls_frame, election_date="2024-11-05"
+        ... )
+        >>> result = forecast.run()  # doctest: +SKIP
+        """
+        instance = cls.__new__(cls)
+        instance.config = config or ModelConfig()
+        instance.election_date = _parse_date(election_date, "election_date")
+        instance.today = _parse_date(today, "today") if today else date.today()
+        instance.poll_data = polls_from_dataframe(
+            polls,
+            date_column=date_column,
+            pollster_column=pollster_column,
+            sample_size_column=sample_size_column,
+            candidate_columns=candidate_columns,
+            date_format=date_format,
+        )
+        return instance
+
     def run(self) -> ForecastResult:
-        """Build the model, sample, and return a ``ForecastResult``."""
+        """Build the model, sample, and return a ``ForecastResult``.
+
+        Emits a :class:`~kronikas.diagnostics.ConvergenceWarning` if the
+        posterior shows signs of not having converged.
+        """
         model, metadata = build_model(
             self.poll_data, self.election_date, self.today, self.config
         )
         trace = run_inference(model, self.config)
-        return extract_results(trace, self.poll_data, metadata)
+        return extract_results(trace, self.poll_data, metadata, config=self.config)
 
 
 def _parse_date(value: str | date | None, name: str) -> date:

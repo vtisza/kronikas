@@ -27,13 +27,32 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Installable with pip: `pip install -e ".[dev]"`.
 dev = [
     "pytest>=7.0",
     "ruff>=0.4",
+    "mypy>=1.8",
 ]
+
+# PEP 735 group, so `uv sync --group dev` works as the docs describe. Kept in
+# step with the `dev` extra above, which serves pip users.
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.4",
+    "mypy>=1.8",
+]
+
+[project.scripts]
+kronikas = "kronikas.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Ship the PEP 561 marker in the wheel; without this the type hints are
+# invisible to downstream type checkers.
+[tool.setuptools.package-data]
+kronikas = ["py.typed"]
 
 [tool.setuptools_scm]
 
@@ -48,3 +67,10 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 markers = [
     "slow: tests that run MCMC sampling (deselect with '-m not slow')",
 ]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/kronikas"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true

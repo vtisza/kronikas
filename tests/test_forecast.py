@@ -69,6 +69,8 @@ class TestElectionForecastRun:
                 time_step_days=30,
                 random_seed=99,
                 progressbar=False,
+                ess_threshold=1.0,
+                r_hat_threshold=100.0,
             ),
         )
         result = ef.run()
