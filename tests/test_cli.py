@@ -205,6 +205,94 @@ class TestForecastCommand:
         assert trace_path.is_file()
         assert ForecastResult.load(trace_path).candidates[0] == "Candidate_A"
 
+    def test_csv_schema_overrides_are_passed_through(self, tmp_path: Path, capsys):
+        """Renamed columns, non-ISO dates and comma decimals, end to end."""
+        import pandas as pd
+
+        frame = pd.DataFrame(
+            {
+                "poll_date": ["15/01/2024", "01/02/2024", "15/02/2024"],
+                "firm": ["PollCo", "SurveyInc", "PollCo"],
+                "n": [1000, 1200, 800],
+                "Dem": ["45,5", "44,0", "46,5"],
+                "Rep": ["40,5", "42,0", "39,5"],
+                "Ind": ["14,0", "14,0", "14,0"],
+            }
+        )
+        path = tmp_path / "euro.csv"
+        frame.to_csv(path, index=False)
+
+        code = main(
+            [
+                "forecast",
+                str(path),
+                "--election-date",
+                "2024-06-01",
+                "--today",
+                "2024-03-01",
+                "--date-column",
+                "poll_date",
+                "--pollster-column",
+                "firm",
+                "--sample-size-column",
+                "n",
+                "--date-format",
+                "%d/%m/%Y",
+                "--decimal",
+                ",",
+                "--json",
+                "-",
+                *FAST_ARGS,
+            ]
+        )
+        payload = json.loads(capsys.readouterr().out)
+        assert code in (0, 1)
+        assert payload["candidates"] == ["Dem", "Rep", "Ind"]
+        assert payload["pollsters"] == ["PollCo", "SurveyInc"]
+
+    def test_candidate_column_subset(self, polls_csv: Path, capsys):
+        main(
+            [
+                "forecast",
+                str(polls_csv),
+                "--election-date",
+                "2024-06-01",
+                "--candidate-column",
+                "Candidate_A",
+                "--candidate-column",
+                "Candidate_B",
+                "--json",
+                "-",
+                *FAST_ARGS,
+            ]
+        )
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["candidates"] == ["Candidate_A", "Candidate_B"]
+
+    def test_seed_makes_runs_reproducible(self, polls_csv: Path, capsys):
+        def run() -> dict:
+            main(
+                [
+                    "forecast",
+                    str(polls_csv),
+                    "--election-date",
+                    "2024-06-01",
+                    "--today",
+                    "2024-03-20",
+                    "--seed",
+                    "4242",
+                    "--target-accept",
+                    "0.9",
+                    "--json",
+                    "-",
+                    *FAST_ARGS,
+                ]
+            )
+            return json.loads(capsys.readouterr().out)
+
+        first, second = run(), run()
+        assert first["election_day_estimates"] == second["election_day_estimates"]
+
     def test_missing_file_exits_cleanly(self, tmp_path: Path):
         with pytest.raises(SystemExit) as excinfo:
             main(

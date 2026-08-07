@@ -307,12 +307,29 @@ kronikas forecast polls.csv \
     --save-trace forecast.nc \
     --quiet
 
+# Report how fragile the call is to an industry-wide polling error
+kronikas forecast polls.csv \
+    --election-date 2024-11-05 \
+    --shared-bias 2 --shared-bias 4
+
+# Non-ISO dates, European decimals, renamed columns
+kronikas forecast polls.csv \
+    --election-date 2024-11-05 \
+    --date-column poll_date --pollster-column firm --sample-size-column n \
+    --date-format "%d/%m/%Y" --decimal ,
+
 # Score the model against a past election
 kronikas backtest polls.csv \
     --election-date 2024-11-05 \
     --as-of 2024-08-01 --as-of 2024-10-01 \
     --actual "Alice=48.2,Bob=47.1,Carol=4.7"
 ```
+
+`--shared-bias PP` reports the forecast under an assumed industry-wide error of
+PP points, moved from the front-runner to the runner-up; repeat it for several
+sizes. JSON output also carries `shared_bias_breakeven_pp`, the smallest such
+error that would erase the lead. See [Shared polling error](#shared-polling-error)
+for why this cannot be measured from the polls themselves.
 
 `kronikas forecast` exits non-zero when the sampler reports a convergence
 problem, so a scheduled run fails loudly instead of publishing bad numbers.
@@ -635,12 +652,19 @@ to logit space internally using a 50 % support baseline.
 
 For more control, use the building blocks directly:
 
+`load_polls()` and `polls_from_dataframe()` return a `PollData`, which exposes
+`poll_dates`, `last_poll_date`, and `up_to(cutoff)` — the last of these returns
+a copy restricted to polls on or before a date, and is what the backtester uses
+to reconstruct what was known at a past moment.
+
 ```python
 from kronikas import ModelConfig, load_polls
 from kronikas.model import build_model, run_inference, extract_results
 from datetime import date
 
 poll_data = load_polls("polls.csv")
+poll_data.last_poll_date              # most recent poll
+earlier = poll_data.up_to(date(2024, 8, 1))   # only polls up to that date
 config = ModelConfig(num_draws=500)
 
 model, metadata = build_model(poll_data, date(2024, 11, 5), date.today(), config)

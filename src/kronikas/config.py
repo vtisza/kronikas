@@ -210,6 +210,16 @@ class ModelConfig:
             exceeds this value.  Requires at least 2 chains to be computable.
         ess_threshold: Convergence warning threshold for the minimum bulk
             effective sample size across parameters.
+        pollster_priors: Per-pollster prior overrides, mapping pollster name to
+            a :class:`PollsterPrior`.  Names that do not match any pollster in
+            the data trigger a warning and are ignored.
+        shared_bias: Prior on the bias common to *every* pollster, as a
+            :class:`SharedBiasPrior`.  Defaults to *None*, which reproduces the
+            historical behaviour: the polling industry is assumed collectively
+            unbiased, with no uncertainty attached to that assumption.  Setting
+            it additionally constrains house effects to sum to zero across
+            pollsters, so ``delta`` means "this pollster relative to the
+            industry" and the common component lives solely in ``shared_bias``.
     """
 
     # Sampler

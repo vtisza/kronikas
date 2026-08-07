@@ -10,13 +10,38 @@ def test_version():
 
 
 def test_public_exports():
-    assert hasattr(kronikas, "ElectionForecast")
-    assert hasattr(kronikas, "ModelConfig")
-    assert hasattr(kronikas, "PollData")
-    assert hasattr(kronikas, "PollsterPrior")
-    assert hasattr(kronikas, "ForecastResult")
-    assert hasattr(kronikas, "CandidateEstimate")
-    assert hasattr(kronikas, "load_polls")
+    for name in [
+        "BacktestPoint",
+        "BacktestResult",
+        "CandidateEstimate",
+        "ConvergenceWarning",
+        "ElectionForecast",
+        "ForecastResult",
+        "ModelConfig",
+        "PollData",
+        "PollsterPrior",
+        "SamplingDiagnostics",
+        "SharedBiasPrior",
+        "backtest",
+        "compute_diagnostics",
+        "load_polls",
+        "polls_from_dataframe",
+    ]:
+        assert hasattr(kronikas, name), f"{name} missing from the package namespace"
+
+
+def test_all_is_complete_and_sorted():
+    """__all__ must resolve, and stay alphabetical so diffs stay readable."""
+    assert kronikas.__all__ == sorted(kronikas.__all__)
+    for name in kronikas.__all__:
+        assert hasattr(kronikas, name), f"__all__ lists unresolvable name {name!r}"
+
+
+def test_cli_entry_point_is_importable():
+    from kronikas.cli import build_parser, main
+
+    assert callable(main)
+    assert build_parser().prog == "kronikas"
 
 
 class TestModelConfigDefaults:

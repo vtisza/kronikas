@@ -74,6 +74,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ModelConfig` now validates its numeric fields on construction.
 - `py.typed` marker, packaged in the wheel, so downstream type checkers can see
   the package's annotations.
+- Test coverage for `latent_trend_dataframe()`, which previously had none, and
+  for the CLI's CSV-schema pass-through (renamed columns, `--date-format`,
+  `--decimal`, `--candidate-column`, `--seed`).
 
 ### Changed
 
@@ -84,6 +87,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ForecastResult.trace` is annotated as `arviz.InferenceData`, and the sample
   arrays as `np.ndarray | None`, instead of `Any` and a mistyped default.
 - API documentation is phrased in party-system-neutral terms.
+- `ModelConfig.pollster_priors` and `shared_bias` are now documented in the
+  class docstring, and `__all__` is sorted and asserted to stay that way.
 - CI now runs a Python 3.10/3.11/3.12 matrix plus macOS, type checks with mypy,
   verifies the built wheel ships `py.typed`, and runs the **full** test suite
   including MCMC sampling — which `make test-fast` deselects entirely, leaving
