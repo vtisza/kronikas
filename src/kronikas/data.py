@@ -49,7 +49,7 @@ class PollData:
     def up_to(self, cutoff: date) -> PollData:
         """Return a copy containing only polls taken on or before *cutoff*.
 
-        Used by :func:`kronikas.backtest.backtest` to reconstruct the
+        Used by :func:`kronikas.backtesting.backtest` to reconstruct the
         information available at a past point in time.  Pollsters that drop out
         entirely are removed and the remaining pollster indices renumbered, so
         the result is indistinguishable from data loaded fresh.

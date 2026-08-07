@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .backtest import backtest
+from .backtesting import backtest
 from .config import ModelConfig
 from .forecast import ElectionForecast
 from .model import ForecastResult

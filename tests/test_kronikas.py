@@ -44,6 +44,38 @@ def test_cli_entry_point_is_importable():
     assert build_parser().prog == "kronikas"
 
 
+def test_no_submodule_is_shadowed_by_an_export():
+    """Re-exporting a name that matches a submodule hides the module.
+
+    `from .backtest import backtest` used to rebind `kronikas.backtest` from the
+    module to the function, so `import kronikas.backtest as m` returned the
+    function and `pydoc.locate("kronikas.backtest")` — the resolution Sphinx,
+    pdoc and mkdocstrings all use — documented the wrong object.
+    """
+    import pkgutil
+    import types
+
+    shadowed = []
+    for info in pkgutil.iter_modules(kronikas.__path__):
+        attr = getattr(kronikas, info.name, None)
+        if attr is not None and not isinstance(attr, types.ModuleType):
+            shadowed.append(f"kronikas.{info.name} -> {type(attr).__name__}")
+    assert not shadowed, (
+        "submodule(s) shadowed by a package-level export: " + ", ".join(shadowed)
+    )
+
+
+def test_submodules_resolve_for_documentation_tools():
+    import importlib
+    import pydoc
+
+    for name in ("backtesting", "config", "data", "diagnostics", "forecast", "model"):
+        dotted = f"kronikas.{name}"
+        assert importlib.import_module(dotted) is pydoc.locate(dotted), (
+            f"{dotted} does not resolve to its module"
+        )
+
+
 class TestModelConfigDefaults:
     def test_sampler_defaults(self):
         cfg = ModelConfig()

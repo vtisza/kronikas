@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from kronikas.backtest import _normalise_actual, backtest
+from kronikas.backtesting import _normalise_actual, backtest
 from kronikas.data import load_polls
 
 

@@ -53,7 +53,7 @@ Run `make` (or `make help`) to see all available targets:
 ```
 src/kronikas/
     __init__.py      # Public API
-    backtest.py      # Refit at past dates and score against the true result
+    backtesting.py   # Refit at past dates and score against the true result
     cli.py           # `kronikas` command-line entry point
     config.py        # ModelConfig / PollsterPrior dataclasses
     data.py          # CSV and DataFrame loading, validation, filtering

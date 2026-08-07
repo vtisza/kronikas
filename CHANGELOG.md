@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Backtesting** (`kronikas.backtest`): refit as of past dates using only the
+- **Backtesting** (`kronikas.backtesting`): refit as of past dates using only the
   polls available then, and score election-day forecasts for accuracy (MAE,
   RMSE) and calibration (90 % interval coverage). Bias is reported per
   candidate, since pooled signed error is identically zero for compositional
@@ -89,6 +89,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API documentation is phrased in party-system-neutral terms.
 - `ModelConfig.pollster_priors` and `shared_bias` are now documented in the
   class docstring, and `__all__` is sorted and asserted to stay that way.
+- The backtesting module is named `kronikas.backtesting`, so it no longer
+  collides with the `backtest()` function it exports. Previously
+  `from .backtest import backtest` rebound `kronikas.backtest` from the module
+  to the function, so `import kronikas.backtest as m` yielded the function and
+  `pydoc.locate("kronikas.backtest")` — the resolution Sphinx, pdoc and
+  mkdocstrings use — returned the wrong object. The public API is unchanged:
+  `from kronikas import backtest` still gives the function. Two guard tests now
+  assert that no submodule is shadowed by a package-level export and that every
+  submodule resolves for documentation tooling.
 - CI now runs a Python 3.10/3.11/3.12 matrix plus macOS, type checks with mypy,
   verifies the built wheel ships `py.typed`, and runs the **full** test suite
   including MCMC sampling — which `make test-fast` deselects entirely, leaving
