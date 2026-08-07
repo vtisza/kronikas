@@ -130,6 +130,16 @@ class TestSaveLoad:
         for name, prob in result.win_probabilities.items():
             assert restored.win_probabilities[name] == pytest.approx(prob)
 
+    def test_roundtrip_preserves_shared_bias_scenario(self, result, tmp_path: Path):
+        shifted = result.assume_shared_bias(
+            {result.candidates[0]: 3.0, result.candidates[1]: -3.0}
+        )
+        restored = ForecastResult.load(shifted.save(tmp_path / "scenario.nc"))
+
+        assert np.allclose(restored.today_samples, shifted.today_samples)
+        assert np.allclose(restored.election_samples, shifted.election_samples)
+        assert restored.win_probabilities == shifted.win_probabilities
+
     def test_last_grid_node_is_still_election_day(self, result, tmp_path: Path):
         restored = ForecastResult.load(result.save(tmp_path / "f.nc"))
         assert restored.time_grid[-1] == restored.election_date

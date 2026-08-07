@@ -98,6 +98,7 @@ def load_polls(
     candidate_columns: list[str] | None = None,
     date_format: str | None = None,
     decimal: str = ".",
+    undecided_column: str | None = None,
 ) -> PollData:
     """Read and validate a CSV of opinion polls.
 
@@ -122,6 +123,11 @@ def load_polls(
         Character used as the decimal point in the CSV (default ``"."``).
         Use ``","`` for European-style CSVs where numbers are written as
         ``"45,3"`` instead of ``"45.3"``.
+    undecided_column:
+        Optional column containing undecided respondents on the same scale as
+        the candidate values. It is excluded from the candidate simplex and
+        scales the effective sample size by the decided fraction, avoiding
+        false precision when candidate shares are renormalised to 100 %.
 
     Returns
     -------
@@ -150,6 +156,7 @@ def load_polls(
         sample_size_column=sample_size_column,
         candidate_columns=candidate_columns,
         date_format=date_format,
+        undecided_column=undecided_column,
     )
 
 
@@ -161,6 +168,7 @@ def polls_from_dataframe(
     sample_size_column: str = "sample_size",
     candidate_columns: list[str] | None = None,
     date_format: str | None = None,
+    undecided_column: str | None = None,
 ) -> PollData:
     """Validate and normalise polls held in a :class:`pandas.DataFrame`.
 
@@ -174,7 +182,7 @@ def polls_from_dataframe(
     df:
         One row per poll.  See :func:`load_polls` for the expected schema.
     date_column, pollster_column, sample_size_column, candidate_columns,
-    date_format:
+    date_format, undecided_column:
         As documented on :func:`load_polls`.
 
     Returns
@@ -209,6 +217,8 @@ def polls_from_dataframe(
 
     # --- required columns ---------------------------------------------------
     meta_cols = {date_column, pollster_column, sample_size_column}
+    if undecided_column is not None:
+        meta_cols.add(undecided_column)
     missing = meta_cols - set(df.columns)
     if missing:
         raise ValueError(f"Missing required columns: {sorted(missing)}")
@@ -238,6 +248,8 @@ def polls_from_dataframe(
 
     # --- drop rows with missing values ---------------------------------------
     required_cols = [date_column, pollster_column, sample_size_column, *cand_cols]
+    if undecided_column is not None:
+        required_cols.append(undecided_column)
     mask = df[required_cols].notna().all(axis=1)
     n_dropped = int((~mask).sum())
     if n_dropped > 0:
@@ -254,6 +266,8 @@ def polls_from_dataframe(
     for col in cand_cols:
         if not pd.api.types.is_numeric_dtype(df[col]):
             raise ValueError(f"Candidate column '{col}' must be numeric.")
+        if not np.isfinite(df[col].to_numpy(dtype=np.float64)).all():
+            raise ValueError(f"Candidate column '{col}' contains non-finite values.")
         if (df[col] < 0).any():
             raise ValueError(f"Candidate column '{col}' contains negative values.")
 
@@ -261,6 +275,16 @@ def polls_from_dataframe(
         raise ValueError(f"'{sample_size_column}' must be numeric.")
     if (df[sample_size_column] <= 0).any():
         raise ValueError("Sample sizes must be positive.")
+    sample_sizes = df[sample_size_column].to_numpy(dtype=np.float64)
+    if not np.isfinite(sample_sizes).all():
+        raise ValueError("Sample sizes must be finite.")
+    if not np.equal(sample_sizes, np.floor(sample_sizes)).all():
+        raise ValueError("Sample sizes must be whole numbers.")
+
+    pollster_names = df[pollster_column].astype(str)
+    if pollster_names.str.strip().eq("").any():
+        raise ValueError("Pollster names must not be blank.")
+    df[pollster_column] = pollster_names
 
     # --- normalise to 100% --------------------------------------------------
     raw = df[cand_cols].to_numpy(dtype=np.float64)
@@ -271,8 +295,20 @@ def polls_from_dataframe(
         )
     normalised = raw / row_sums * 100.0
 
+    if undecided_column is not None:
+        undecided = df[undecided_column].to_numpy(dtype=np.float64)
+        if not np.isfinite(undecided).all() or (undecided < 0).any():
+            raise ValueError(
+                f"Undecided column '{undecided_column}' must contain finite, "
+                "non-negative values."
+            )
+        decided_fraction = row_sums[:, 0] / (row_sums[:, 0] + undecided)
+        if not np.isfinite(decided_fraction).all():
+            raise ValueError("Candidate and undecided totals must be positive.")
+        sample_sizes = sample_sizes * decided_fraction
+
     # --- sort by date --------------------------------------------------------
-    sort_idx = np.argsort(df[date_column].values)
+    sort_idx = np.argsort(df[date_column].values, kind="stable")
     df = df.iloc[sort_idx].reset_index(drop=True)
     normalised = normalised[sort_idx]
 
@@ -286,7 +322,7 @@ def polls_from_dataframe(
     return PollData(
         dates=days,
         pollster_ids=df[pollster_column].map(pollster_map).to_numpy(dtype=np.int64),
-        sample_sizes=df[sample_size_column].to_numpy(dtype=np.float64),
+        sample_sizes=sample_sizes[sort_idx],
         poll_values=normalised,
         candidates=cand_cols,
         pollsters=pollsters,

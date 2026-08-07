@@ -55,6 +55,34 @@ class TestElectionForecastInit:
 
 
 class TestElectionForecastRun:
+    def test_future_polls_are_excluded_before_model_build(
+        self, polls_csv: Path, monkeypatch
+    ):
+        forecast = ElectionForecast(
+            polls_csv=polls_csv,
+            election_date="2024-06-01",
+            today="2024-02-01",
+        )
+        captured = {}
+
+        def fake_build(data, election_date, today, config):
+            captured["data"] = data
+            return object(), {}
+
+        monkeypatch.setattr("kronikas.forecast.build_model", fake_build)
+        monkeypatch.setattr(
+            "kronikas.forecast.run_inference", lambda model, config: object()
+        )
+        monkeypatch.setattr(
+            "kronikas.forecast.extract_results",
+            lambda trace, data, metadata, config: data,
+        )
+
+        with pytest.warns(UserWarning, match="Ignoring polls after"):
+            used = forecast.run()
+        assert used.last_poll_date <= date(2024, 2, 1)
+        assert captured["data"] is used
+
     @pytest.mark.slow
     def test_end_to_end(self, polls_csv: Path):
         ef = ElectionForecast(

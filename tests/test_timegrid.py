@@ -107,8 +107,40 @@ class TestBoundaryWarnings:
     def test_warns_on_polls_after_election_date(self):
         data = polls_from_dataframe(_frame(["2024-01-15", "2024-07-01"]))
         config = ModelConfig(time_step_days=7)
-        with pytest.warns(UserWarning, match="dated after election_date"):
+        with pytest.raises(ValueError, match="after election_date"):
             build_model(data, date(2024, 6, 1), date(2024, 3, 1), config)
+
+
+class TestInitialState:
+    def test_uses_earliest_occupied_node_not_all_polls(self):
+        frame = pd.DataFrame(
+            {
+                "date": ["2024-01-15", "2024-05-15"],
+                "pollster": ["P", "P"],
+                "sample_size": [1000, 1000],
+                "Alpha": [70.0, 20.0],
+                "Beta": [20.0, 70.0],
+                "Small": [10.0, 10.0],
+            }
+        )
+        data = polls_from_dataframe(frame)
+        _, meta = build_model(
+            data,
+            election_date=date(2024, 6, 1),
+            today=date(2024, 5, 15),
+            config=ModelConfig(time_step_days=30),
+        )
+        assert meta["initial_props"] == pytest.approx([0.7, 0.2, 0.1])
+
+    def test_largest_early_candidate_is_reference(self):
+        data = polls_from_dataframe(_frame(["2024-01-15", "2024-02-15"]))
+        _, meta = build_model(
+            data,
+            election_date=date(2024, 6, 1),
+            today=date(2024, 2, 15),
+            config=ModelConfig(),
+        )
+        assert meta["reference_candidate_idx"] == int(np.argmax(meta["initial_props"]))
 
     def test_no_warning_when_everything_is_in_range(self):
         data = polls_from_dataframe(_frame(["2024-01-15", "2024-03-01"]))

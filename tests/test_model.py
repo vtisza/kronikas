@@ -58,7 +58,7 @@ class TestBuildModel:
         assert "delta_raw" not in names
 
     def test_election_before_polls_raises(self, poll_data, fast_config):
-        with pytest.raises(ValueError, match="after the first poll"):
+        with pytest.raises(ValueError, match="after election_date"):
             build_model(
                 poll_data,
                 election_date=date(2023, 1, 1),
@@ -347,6 +347,14 @@ class TestHouseEffectsDataframe:
                 atol=1e-6,
                 err_msg=f"House effects for {pollster!r} do not sum to zero",
             )
+
+        delta = trace.posterior["delta"].values
+        np.testing.assert_allclose(
+            delta.sum(axis=2),
+            0.0,
+            atol=1e-9,
+            err_msg="Logit house effects must average to zero across pollsters",
+        )
 
     @pytest.mark.slow
     def test_values_within_bounds(self, poll_data, election_date, today, fast_config):

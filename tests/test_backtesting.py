@@ -38,6 +38,11 @@ class TestNormaliseActual:
         with pytest.raises(ValueError, match="positive"):
             _normalise_actual({"A": 0.0, "B": 0.0}, ["A", "B"])
 
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), -1.0])
+    def test_invalid_values_raise(self, bad):
+        with pytest.raises(ValueError, match="finite and non-negative"):
+            _normalise_actual({"A": bad, "B": 1.0}, ["A", "B"])
+
 
 class TestBacktestValidation:
     def test_empty_dates_raise(self, polls_csv: Path, fast_config):
@@ -97,6 +102,7 @@ class TestBacktestRun:
             assert point.error == pytest.approx(point.mean - point.actual)
             assert point.abs_error == pytest.approx(abs(point.error))
             assert point.covered == (point.ci_lower <= point.actual <= point.ci_upper)
+            assert point.crps is not None and point.crps >= 0.0
 
     def test_metrics_are_reported(self, report):
         stats = report.metrics()
@@ -104,7 +110,8 @@ class TestBacktestRun:
         assert stats["n_points"] == 6
         assert stats["mae"] >= 0.0
         assert stats["rmse"] >= stats["mae"] - 1e-9
-        assert 0.0 <= stats["coverage_90"] <= 1.0
+        assert stats["mean_crps"] >= 0.0
+        assert 0.0 <= stats["interval_hit_rate_90"] <= 1.0
 
     def test_bias_is_per_candidate_not_pooled(self, report):
         """Pooled signed bias is identically zero for compositional data."""
@@ -119,10 +126,11 @@ class TestBacktestRun:
             frame.columns
         )
 
-    def test_summary_mentions_calibration(self, report):
+    def test_summary_describes_hit_rate_without_claiming_calibration(self, report):
         text = report.summary()
         assert "Backtest report" in text
-        assert "90% coverage" in text
+        assert "90% hit rate" in text
+        assert "many elections are needed for calibration" in text
         assert "Signed bias by candidate" in text
 
     def test_results_not_kept_by_default(self, report):
