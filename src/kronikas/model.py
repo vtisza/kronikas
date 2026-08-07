@@ -32,7 +32,7 @@ import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 
-from .config import ModelConfig, PollsterPrior
+from .config import ModelConfig, PollsterPrior, SharedBiasPrior
 from .data import PollData
 from .diagnostics import ConvergenceWarning, SamplingDiagnostics, compute_diagnostics
 
@@ -183,6 +183,172 @@ class ForecastResult:
                 f"Unknown candidate; known candidates are {self.candidates}."
             ) from exc
         return float(np.mean(samples[:, i] > samples[:, j]))
+
+    def assume_shared_bias(self, offsets: dict[str, float]) -> ForecastResult:
+        """Re-derive the forecast assuming the polls carry an industry-wide bias.
+
+        A bias shared by every pollster is invisible to the model: the
+        likelihood is exactly unchanged by shifting the latent trend one way and
+        all house effects the other, so a common error passes into the forecast
+        one-for-one.  That same invariance is what makes this method legitimate
+        rather than a fudge — the shifted posterior is just as consistent with
+        the observed polls as the original, so this reports a different point on
+        a ridge the data cannot distinguish.
+
+        Use it to state how fragile a call is: *this lead survives a 1 pp
+        industry error and does not survive 3 pp.*
+
+        No refit is needed; the stored posterior draws are shifted directly.
+
+        .. note::
+           This is an approximation to refitting with
+           :class:`~kronikas.config.SharedBiasPrior`.  It is exact on the
+           shares by construction, and on synthetic checks the mean estimate
+           matched a refit to within 0.05 pp — but the prior also constrains
+           the latent level, so the two do not coincide exactly and tail
+           probabilities can differ by several points.  For exploring fragility
+           this is the right tool; for a number you intend to publish, refit
+           with ``ModelConfig(shared_bias=...)``.
+
+        Parameters
+        ----------
+        offsets:
+            Per-candidate bias in **percentage points**, keyed by name.
+            Positive means the polls **over**-state that candidate, so the
+            corrected forecast moves it *down*.  Candidates omitted are treated
+            as 0.  Offsets need not sum to zero; the remainder is redistributed
+            proportionally, matching how poll rows are normalised.
+
+        Returns
+        -------
+        ForecastResult
+            A new result with shifted samples, re-derived estimates and
+            re-derived probabilities.  ``trace`` and ``house_effect_samples``
+            are carried over unchanged and therefore still describe the
+            unshifted fit, so :meth:`latent_trend_dataframe` reflects the
+            original forecast.
+
+        Raises
+        ------
+        KeyError
+            If *offsets* names a candidate that is not in the model.
+
+        Examples
+        --------
+        >>> shifted = result.assume_shared_bias({"Alice": 3.0})  # doctest: +SKIP
+        >>> shifted.win_probabilities  # doctest: +SKIP
+        """
+        unknown = set(offsets) - set(self.candidates)
+        if unknown:
+            raise KeyError(
+                f"Unknown candidate(s) {sorted(unknown)}; known candidates are "
+                f"{self.candidates}."
+            )
+        shift = np.array(
+            [float(offsets.get(name, 0.0)) for name in self.candidates],
+            dtype=np.float64,
+        )
+        # Candidates the caller did not name take up any residual, so a stated
+        # correction lands at its stated size (see _balance_offsets).
+        absorb = np.array([name not in offsets for name in self.candidates], dtype=bool)
+
+        def _apply(samples: np.ndarray) -> np.ndarray:
+            adjusted = samples - _balance_offsets(shift, samples, absorb)
+            # A large correction can drive a small party negative in some
+            # draws; floor it rather than emit impossible shares.
+            floored = np.clip(adjusted, 1e-9, None)
+            if not np.array_equal(floored, adjusted):
+                warnings.warn(
+                    "assume_shared_bias drove at least one candidate to a "
+                    "non-positive share in some draws; those draws were "
+                    "floored at ~0. The offsets may be too large for a small "
+                    "party.",
+                    stacklevel=3,
+                )
+            return floored / floored.sum(axis=1, keepdims=True) * 100.0
+
+        today_samples = _apply(self._samples_for("today"))
+        election_samples = _apply(self._samples_for("election_day"))
+
+        def _estimates(samples: np.ndarray) -> list[CandidateEstimate]:
+            return [
+                CandidateEstimate(
+                    name=name,
+                    mean=float(np.mean(samples[:, k])),
+                    median=float(np.median(samples[:, k])),
+                    ci_lower=float(np.percentile(samples[:, k], 5)),
+                    ci_upper=float(np.percentile(samples[:, k], 95)),
+                )
+                for k, name in enumerate(self.candidates)
+            ]
+
+        winners = np.argmax(election_samples, axis=1)
+        return ForecastResult(
+            today_estimates=_estimates(today_samples),
+            election_day_estimates=_estimates(election_samples),
+            win_probabilities={
+                name: float(np.mean(winners == k))
+                for k, name in enumerate(self.candidates)
+            },
+            trace=self.trace,
+            candidates=list(self.candidates),
+            pollsters=list(self.pollsters),
+            today_samples=today_samples,
+            election_samples=election_samples,
+            house_effect_samples=self.house_effect_samples,
+            time_grid=list(self.time_grid),
+            election_date=self.election_date,
+            today=self.today,
+            diagnostics=self.diagnostics,
+        )
+
+    def shared_bias_breakeven(
+        self, day: str = "election_day", *, max_pp: float = 25.0
+    ) -> float | None:
+        """Smallest uniform polling error that would erase the leader's lead.
+
+        Shifts support from the front-runner to the runner-up in equal measure
+        and reports the size at which the front-runner's probability of leading
+        falls to 50 %.  A small number means the call rests on the polls being
+        collectively accurate.
+
+        Parameters
+        ----------
+        day : {"election_day", "today"}
+            Time point to evaluate.
+        max_pp:
+            Upper bound of the search, in percentage points.
+
+        Returns
+        -------
+        float or None
+            The break-even error in percentage points, or *None* if the lead
+            survives a shift of *max_pp* (or if there is no clear leader).
+        """
+        samples = self._samples_for(day)
+        means = samples.mean(axis=0)
+        order = np.argsort(means)[::-1]
+        leader, runner_up = int(order[0]), int(order[1])
+
+        def probability(shift_pp: float) -> float:
+            adjusted = samples.copy()
+            adjusted[:, leader] -= shift_pp
+            adjusted[:, runner_up] += shift_pp
+            return float(np.mean(adjusted[:, leader] > adjusted[:, runner_up]))
+
+        if probability(0.0) < 0.5:
+            return 0.0
+        if probability(max_pp) >= 0.5:
+            return None
+
+        low, high = 0.0, max_pp
+        for _ in range(40):
+            mid = (low + high) / 2.0
+            if probability(mid) >= 0.5:
+                low = mid
+            else:
+                high = mid
+        return float((low + high) / 2.0)
 
     def party_forecast_dataframe(self, day: str = "today") -> pd.DataFrame:
         """Return a DataFrame of posterior vote-share samples per party.
@@ -507,6 +673,152 @@ def _pp_to_logit(pp: float, baseline: float = 0.5) -> float:
     )
 
 
+def _pp_sd_to_logit(sd_pp: float, baseline: float) -> float:
+    """Convert a percentage-point standard deviation to log-ratio scale.
+
+    Uses the local derivative ``d logit / d p = 1 / (p (1 - p))`` at *baseline*.
+    This is a linearisation, exact only in the limit of small *sd_pp*, which is
+    the regime that matters here: shared polling errors are a few points, not
+    tens of points.
+    """
+    if not 0.0 < baseline < 1.0:
+        raise ValueError(f"baseline must lie in (0, 1); got {baseline}.")
+    if sd_pp < 0:
+        raise ValueError(f"sd must be >= 0; got {sd_pp}.")
+    return float((sd_pp / 100.0) / (baseline * (1.0 - baseline)))
+
+
+def _balance_offsets(
+    offsets_pp: np.ndarray, shares: np.ndarray, absorb: np.ndarray
+) -> np.ndarray:
+    """Spread the residual of *offsets_pp* so the offsets sum to zero.
+
+    Shares must sum to a constant, so a bias statement has to balance: if one
+    candidate is overstated, someone else is understated.  When the caller
+    names only some candidates — "polls overstate A by 4" — the remaining 4
+    points are taken from the candidates they did *not* name, in proportion to
+    those candidates' support.
+
+    Renormalising the whole vector afterwards instead would be wrong: scaling
+    every share back up partially undoes the requested shift, so a stated 4 pp
+    correction would land as roughly 2 pp.
+
+    Parameters
+    ----------
+    offsets_pp:
+        ``(K,)`` requested offsets in percentage points.
+    shares:
+        ``(N, K)`` share vectors the offsets apply to, used for the weights.
+    absorb:
+        ``(K,)`` boolean mask of candidates allowed to take up the residual —
+        normally those the caller did not name.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``(N, K)`` offsets that sum to zero along the candidate axis.
+    """
+    balanced = np.broadcast_to(offsets_pp, shares.shape).astype(np.float64).copy()
+    residual = float(offsets_pp.sum())
+    if abs(residual) < 1e-12:
+        return balanced
+    if not absorb.any():
+        # Everything was named and it does not balance; fall back to spreading
+        # across all candidates rather than silently ignoring the residual.
+        absorb = np.ones_like(absorb, dtype=bool)
+    block = shares[:, absorb]
+    total = block.sum(axis=1, keepdims=True)
+    uniform = np.full_like(block, 1.0 / max(int(absorb.sum()), 1))
+    weights = np.divide(block, total, out=uniform, where=total > 0)
+    balanced[:, absorb] -= residual * weights
+    return balanced
+
+
+def _shared_mean_to_logit(
+    offsets_pp: np.ndarray, baseline: np.ndarray, absorb: np.ndarray | None = None
+) -> np.ndarray:
+    """Convert a *vector* of percentage-point offsets to a log-ratio shift.
+
+    The offsets are a joint statement about the whole share vector — "polls
+    show A 3 pp too high and B 3 pp too low" — so they must be converted
+    jointly.  Converting each candidate independently with its own marginal
+    logit double-counts: in a softmax the gap between two candidates moves by
+    the *sum* of their individual shifts, so a 3 pp correction applied to both
+    sides of a pair produces a 6 pp swing in their margin.
+
+    Instead, build the corrected share vector directly and take the log-ratio
+    difference, which lands exactly on the intended target::
+
+        q = normalise(baseline - offsets)
+        shift = log(baseline) - log(q)
+
+    Offsets that do not sum to zero are balanced by :func:`_balance_offsets`,
+    which takes the remainder from the candidates the caller did not name.
+    """
+    if absorb is None:
+        absorb = offsets_pp == 0.0
+    balanced = _balance_offsets(offsets_pp, baseline[None, :] * 100.0, absorb)[0]
+
+    corrected = baseline - balanced / 100.0
+    if np.any(corrected <= 0):
+        bad = np.where(corrected <= 0)[0]
+        raise ValueError(
+            "shared_bias mean is too large: it drives "
+            f"candidate index/indices {bad.tolist()} to a non-positive share "
+            f"(baseline {np.round(baseline * 100, 1).tolist()} %, offsets "
+            f"{offsets_pp.tolist()} pp)."
+        )
+    corrected = corrected / corrected.sum()
+    shift = np.log(baseline) - np.log(corrected)
+    # The additive constant is absorbed by the softmax; centre it for tidiness.
+    return shift - shift.mean()
+
+
+def _resolve_shared_bias(
+    prior: SharedBiasPrior,
+    candidates: list[str],
+    initial_props: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Translate a SharedBiasPrior into log-ratio mean and SD vectors.
+
+    The mean is converted jointly (see :func:`_shared_mean_to_logit`); the SD
+    is converted per candidate with the local derivative, which is the right
+    treatment for an independent perturbation of a single candidate.
+
+    Returns
+    -------
+    mean_logit, sd_logit
+        Arrays of shape ``(n_candidates,)``.
+    """
+    index = {name: i for i, name in enumerate(candidates)}
+    for supplied in (prior.mean, prior.sd):
+        for name in supplied:
+            if name not in index:
+                warnings.warn(
+                    f"shared_bias key {name!r} does not match any candidate "
+                    f"(known: {candidates}). Ignoring.",
+                    stacklevel=3,
+                )
+
+    offsets_pp = np.array(
+        [float(prior.mean.get(name, 0.0)) for name in candidates], dtype=np.float64
+    )
+    # Candidates the caller did not name take up any residual.
+    absorb = np.array([name not in prior.mean for name in candidates], dtype=bool)
+    mean_logit = (
+        _shared_mean_to_logit(offsets_pp, initial_props, absorb)
+        if np.any(offsets_pp)
+        else np.zeros(len(candidates))
+    )
+
+    sd_logit = np.zeros(len(candidates))
+    for name, k in index.items():
+        sd_pp = float(prior.sd.get(name, prior.default_sd))
+        if sd_pp:
+            sd_logit[k] = _pp_sd_to_logit(sd_pp, baseline=float(initial_props[k]))
+    return mean_logit, sd_logit
+
+
 def _pt_softmax(x: pt.TensorVariable, axis: int = -1) -> pt.TensorVariable:
     """Numerically stable softmax for PyTensor tensors."""
     x_max = pt.max(x, axis=axis, keepdims=True)
@@ -752,6 +1064,18 @@ def build_model(
     # window does not change when `time_step_days` changes.
     walk_sigma_prior = config.per_step_walk_sigma
 
+    # ------------------------------------------------------------------
+    # Industry-wide shared bias
+    # ------------------------------------------------------------------
+    shared_mean_logit = np.zeros(n_candidates)
+    shared_sd_logit = np.zeros(n_candidates)
+    shared_bias_active = False
+    if config.shared_bias is not None and not config.shared_bias.is_inert():
+        shared_mean_logit, shared_sd_logit = _resolve_shared_bias(
+            config.shared_bias, list(poll_data.candidates), initial_props
+        )
+        shared_bias_active = True
+
     with pm.Model() as model:
         # === Random-walk volatility ===
         if config.correlated_walk:
@@ -862,14 +1186,33 @@ def build_model(
                     shape=(n_pollsters, n_candidates),
                 )
             # Zero-mean constrain house effects across all K parties for each pollster
-            delta_full = pm.Deterministic(
-                "delta", delta_raw - pt.mean(delta_raw, axis=1, keepdims=True)
-            )
+            centred = delta_raw - pt.mean(delta_raw, axis=1, keepdims=True)
+            if shared_bias_active:
+                # Also centre across pollsters, so `delta` means "this pollster
+                # relative to the industry average" and the industry average
+                # lives solely in `shared_bias`. Without this the two terms are
+                # confounded with each other and the decomposition is arbitrary.
+                centred = centred - pt.mean(centred, axis=0, keepdims=True)
+            delta_full = pm.Deterministic("delta", centred)
 
             eta_obs = eta_full[time_indices] + delta_full[poll_data.pollster_ids]
-            mu_obs = _pt_softmax(eta_obs, axis=1)
         else:
-            mu_obs = pi[time_indices]
+            eta_obs = eta_full[time_indices]
+
+        # === Industry-wide bias (not identifiable; scale must be supplied) ===
+        if shared_bias_active:
+            shift = pt.as_tensor_variable(shared_mean_logit)
+            if np.any(shared_sd_logit > 0):
+                # Non-centred, and candidates with sd == 0 contribute nothing
+                # extra, so a pure point scenario needs no special case.
+                z = pm.Normal("shared_bias_z", 0.0, 1.0, shape=n_candidates)
+                shift = shift + z * pt.as_tensor_variable(shared_sd_logit)
+            shared = pm.Deterministic("shared_bias", shift)
+            # Polls show latent support PLUS the industry's common error, so
+            # `pi` remains the bias-corrected estimate of true support.
+            eta_obs = eta_obs + shared[None, :]
+
+        mu_obs = _pt_softmax(eta_obs, axis=1)
 
         # === Dirichlet observation model ===
         sample_sizes = pt.as_tensor_variable(poll_data.sample_sizes.reshape(-1, 1))
@@ -887,6 +1230,7 @@ def build_model(
         "election_idx": election_idx,
         "n_timesteps": n_timesteps,
         "include_house_effects": include_house,
+        "shared_bias_active": shared_bias_active,
         "grid_start_date": grid.start_date,
         "election_date": election_date,
         "today": today,

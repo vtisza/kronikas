@@ -16,9 +16,10 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .backtest import backtest
+from .backtesting import backtest
 from .config import ModelConfig
 from .forecast import ElectionForecast
+from .model import ForecastResult
 
 
 def _parse_date(value: str) -> date:
@@ -139,6 +140,13 @@ def _write_json(payload: dict, destination: str) -> None:
         Path(destination).write_text(text, encoding="utf-8")
 
 
+def _uniform_offsets(result: ForecastResult, pp: float) -> dict[str, float]:
+    """Offsets moving *pp* points from the front-runner to the runner-up."""
+    means = {e.name: e.mean for e in result.election_day_estimates}
+    ranked = sorted(means, key=lambda name: -means[name])
+    return {ranked[0]: pp, ranked[1]: -pp}
+
+
 def _run_forecast(args: argparse.Namespace) -> int:
     """Handle the ``forecast`` subcommand."""
     config = _build_config(args)
@@ -151,6 +159,13 @@ def _run_forecast(args: argparse.Namespace) -> int:
     )
     result = forecast.run()
 
+    scenarios = {
+        f"{pp:g}": result.assume_shared_bias(
+            _uniform_offsets(result, pp)
+        ).win_probabilities
+        for pp in (args.shared_bias or [])
+    }
+
     if not args.json:
         print(result.summary())
         for threshold in args.threshold or []:
@@ -159,11 +174,22 @@ def _run_forecast(args: argparse.Namespace) -> int:
             probs = result.threshold_probabilities(threshold)
             for name, prob in sorted(probs.items(), key=lambda kv: -kv[1]):
                 print(f"  {name:<20s} {prob:6.1%}")
+        if scenarios:
+            print("\nIf the polls carry an industry-wide error")
+            print("(shifted from the front-runner to the runner-up)")
+            print("-" * 48)
+            for pp, probs in scenarios.items():
+                leading = max(probs.items(), key=lambda kv: kv[1])
+                print(f"  {pp:>5}pp  P({leading[0]} leads) = {leading[1]:6.1%}")
         if result.diagnostics is not None and result.diagnostics.converged:
             print()
             print(result.diagnostics.summary())
     else:
-        _write_json(result.to_dict(thresholds=args.threshold), args.json)
+        payload = result.to_dict(thresholds=args.threshold)
+        if scenarios:
+            payload["shared_bias_scenarios"] = scenarios
+        payload["shared_bias_breakeven_pp"] = result.shared_bias_breakeven()
+        _write_json(payload, args.json)
 
     if args.save_trace:
         result.save(args.save_trace)
@@ -230,6 +256,18 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Report P(vote share >= PP) on election day. Repeat for several "
             "thresholds, e.g. --threshold 5 --threshold 10."
+        ),
+    )
+    forecast_parser.add_argument(
+        "--shared-bias",
+        type=float,
+        action="append",
+        metavar="PP",
+        help=(
+            "Report the forecast under an assumed industry-wide polling error "
+            "of PP points, shifted from the front-runner to the runner-up. "
+            "Repeat for several sizes. A bias shared by every pollster cannot "
+            "be measured from polls alone, so this shows what it would cost."
         ),
     )
     forecast_parser.add_argument(

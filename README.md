@@ -307,12 +307,29 @@ kronikas forecast polls.csv \
     --save-trace forecast.nc \
     --quiet
 
+# Report how fragile the call is to an industry-wide polling error
+kronikas forecast polls.csv \
+    --election-date 2024-11-05 \
+    --shared-bias 2 --shared-bias 4
+
+# Non-ISO dates, European decimals, renamed columns
+kronikas forecast polls.csv \
+    --election-date 2024-11-05 \
+    --date-column poll_date --pollster-column firm --sample-size-column n \
+    --date-format "%d/%m/%Y" --decimal ,
+
 # Score the model against a past election
 kronikas backtest polls.csv \
     --election-date 2024-11-05 \
     --as-of 2024-08-01 --as-of 2024-10-01 \
     --actual "Alice=48.2,Bob=47.1,Carol=4.7"
 ```
+
+`--shared-bias PP` reports the forecast under an assumed industry-wide error of
+PP points, moved from the front-runner to the runner-up; repeat it for several
+sizes. JSON output also carries `shared_bias_breakeven_pp`, the smallest such
+error that would erase the lead. See [Shared polling error](#shared-polling-error)
+for why this cannot be measured from the polls themselves.
 
 `kronikas forecast` exits non-zero when the sampler reports a convergence
 problem, so a scheduled run fails loudly instead of publishing bad numbers.
@@ -386,6 +403,73 @@ result = ElectionForecast("polls.csv", "2024-11-05", config=config).run()
 import arviz as az
 print(az.loo(result.trace))
 ```
+
+## Shared polling error
+
+A bias that **every** pollster shares is invisible to this model, and to any
+model fitted to a single election's polls. The likelihood is exactly unchanged
+by shifting the latent trend one way and all house effects the other, so no
+quantity of polls or pollsters can measure it. Worse, `sigma_house` is learned
+from how much pollsters differ *from each other*: when they all lean the same
+way, the model concludes they are all accurate and passes their common error
+into the forecast one-for-one — while reporting a *narrower* interval, because
+it reads their agreement as precision.
+
+On a synthetic dead heat (truth 45–45) where every pollster shaded 3 pp toward
+one side, the model reported 47.3 and put the probability of that side leading
+at 97.8 %, with a 90 % interval that excluded the truth.
+
+House effects cannot show you this: they capture only the differences between
+pollsters, so their average is pinned near zero no matter how large the common
+error is. There is no diagnostic for it. What there is instead:
+
+### Ask what it would cost — no refit
+
+```python
+result.assume_shared_bias({"Alice": 3.0})       # "polls overstate Alice by 3 pp"
+result.shared_bias_breakeven()                   # smallest error that erases the lead
+```
+
+The ridge is what makes this legitimate: a shifted posterior fits the observed
+polls exactly as well, so this reports a different point the data cannot rule
+out. Offsets are in percentage points, positive meaning the polls **over**-state
+that candidate. Candidates you do not name take up the remainder in proportion
+to their support, so `{"Alice": 3.0}` moves Alice by a full 3 pp.
+
+This is an approximation to a refit — on synthetic checks the mean matched to
+within 0.05 pp, though tail probabilities can differ by several points. For
+numbers you intend to publish, use the model term below.
+
+### Or build it into the model
+
+```python
+from kronikas import ModelConfig, SharedBiasPrior
+
+config = ModelConfig(
+    shared_bias=SharedBiasPrior(
+        mean={"Alice": 2.0, "Bob": -2.0},   # directional belief, in pp
+        sd={"Alice": 1.5, "Bob": 1.5},      # and how sure you are of it
+        default_sd=2.5,                     # for candidates not listed
+    )
+)
+```
+
+Both the centre and the spread are yours to set, per candidate. There is no
+reason to assume the industry's error is symmetric about zero — that is exactly
+the assumption that produced the 97.8 % call above — so if you believe polls
+have historically understated a party, say so.
+
+`shared_bias` defaults to `None`, which reproduces earlier behaviour exactly:
+the industry is assumed collectively unbiased, with no uncertainty attached.
+Setting it also constrains house effects to sum to zero across pollsters, so
+`delta` means "this pollster relative to the industry" and the industry-wide
+component lives solely in `shared_bias`.
+
+**The scale must be supplied, not learned.** A hierarchical scale estimated
+from the same polls collapses toward zero for the very reason above, leaving
+the term inert. Take the number from historical polling error in comparable
+races — often around 2–3 pp — or estimate it from past election results, which
+is the only data that can identify it.
 
 ## Model
 
@@ -476,6 +560,7 @@ All fields on `ModelConfig` with their defaults:
 | Parameter | Default | Description |
 |---|---|---|
 | `pollster_priors` | `{}` | Dict mapping pollster name to `PollsterPrior` (see below) |
+| `shared_bias` | None | `SharedBiasPrior` for industry-wide polling error (see [Shared polling error](#shared-polling-error)) |
 
 ## Per-pollster priors
 
@@ -567,12 +652,19 @@ to logit space internally using a 50 % support baseline.
 
 For more control, use the building blocks directly:
 
+`load_polls()` and `polls_from_dataframe()` return a `PollData`, which exposes
+`poll_dates`, `last_poll_date`, and `up_to(cutoff)` — the last of these returns
+a copy restricted to polls on or before a date, and is what the backtester uses
+to reconstruct what was known at a past moment.
+
 ```python
 from kronikas import ModelConfig, load_polls
 from kronikas.model import build_model, run_inference, extract_results
 from datetime import date
 
 poll_data = load_polls("polls.csv")
+poll_data.last_poll_date              # most recent poll
+earlier = poll_data.up_to(date(2024, 8, 1))   # only polls up to that date
 config = ModelConfig(num_draws=500)
 
 model, metadata = build_model(poll_data, date(2024, 11, 5), date.today(), config)

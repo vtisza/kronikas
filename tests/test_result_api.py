@@ -147,6 +147,49 @@ class TestSaveLoad:
 
 
 @pytest.mark.slow
+class TestLatentTrendDataframe:
+    def test_one_row_per_grid_node(self, result):
+        frame = result.latent_trend_dataframe()
+        assert len(frame) == len(result.time_grid)
+
+    def test_indexed_by_calendar_date(self, result):
+        frame = result.latent_trend_dataframe()
+        assert list(frame.index) == result.time_grid
+        assert frame.index[-1] == result.election_date
+
+    def test_three_columns_per_candidate(self, result):
+        frame = result.latent_trend_dataframe()
+        for name in result.candidates:
+            assert {f"{name}_mean", f"{name}_p_5", f"{name}_p_95"} <= set(frame.columns)
+        assert len(frame.columns) == 3 * len(result.candidates)
+
+    def test_means_sum_to_100_at_every_step(self, result):
+        frame = result.latent_trend_dataframe()
+        means = frame[[f"{n}_mean" for n in result.candidates]].sum(axis=1)
+        assert np.allclose(means, 100.0)
+
+    def test_percentiles_bracket_the_mean(self, result):
+        frame = result.latent_trend_dataframe()
+        for name in result.candidates:
+            assert (frame[f"{name}_p_5"] <= frame[f"{name}_p_95"]).all()
+            assert (frame[f"{name}_p_5"] <= frame[f"{name}_mean"] + 1e-9).all()
+            assert (frame[f"{name}_mean"] <= frame[f"{name}_p_95"] + 1e-9).all()
+
+    def test_values_are_percentage_points(self, result):
+        frame = result.latent_trend_dataframe()
+        assert frame.to_numpy().min() >= 0.0
+        assert frame.to_numpy().max() <= 100.0
+
+    def test_agrees_with_the_election_day_estimate(self, result):
+        """The final row must match election_day_estimates."""
+        frame = result.latent_trend_dataframe()
+        for estimate in result.election_day_estimates:
+            assert frame[f"{estimate.name}_mean"].iloc[-1] == pytest.approx(
+                estimate.mean, abs=1e-9
+            )
+
+
+@pytest.mark.slow
 class TestSummaryText:
     def test_names_plurality_not_victory(self, result):
         """The statistic is a vote-share plurality, and should say so."""

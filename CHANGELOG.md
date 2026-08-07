@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Backtesting** (`kronikas.backtest`): refit as of past dates using only the
+- **Backtesting** (`kronikas.backtesting`): refit as of past dates using only the
   polls available then, and score election-day forecasts for accuracy (MAE,
   RMSE) and calibration (90 % interval coverage). Bias is reported per
   candidate, since pooled signed error is identically zero for compositional
@@ -55,11 +55,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `polls_from_dataframe()` and `ElectionForecast.from_dataframe()`: use polls
   already in memory without a CSV round-trip.
 - `PollData.up_to()`, `PollData.poll_dates`, `PollData.last_poll_date`.
+- **Shared polling error** (`SharedBiasPrior`, `ModelConfig.shared_bias`): an
+  explicit prior on the bias every pollster shares, which is not identifiable
+  from a single election's polls and which the model otherwise passes into the
+  forecast one-for-one while *narrowing* the interval, because it reads
+  pollster agreement as precision. Both the centre and the spread are settable
+  per candidate — the error is not assumed symmetric about zero. Defaults to
+  `None`, reproducing earlier behaviour exactly. When set, house effects are
+  additionally constrained to sum to zero across pollsters so the decomposition
+  is unambiguous. The scale must be supplied rather than learned: a
+  hierarchical scale collapses to zero for the same reason.
+- `ForecastResult.assume_shared_bias()` and `shared_bias_breakeven()`: report
+  what an industry-wide error would cost, with no refit, plus the smallest
+  uniform error that erases the leader's advantage. A `--shared-bias` flag
+  exposes both on the CLI.
 - `ModelConfig.compute_log_likelihood` to populate the trace's
   `log_likelihood` group for `arviz.loo` / `arviz.waic`.
 - `ModelConfig` now validates its numeric fields on construction.
 - `py.typed` marker, packaged in the wheel, so downstream type checkers can see
   the package's annotations.
+- Test coverage for `latent_trend_dataframe()`, which previously had none, and
+  for the CLI's CSV-schema pass-through (renamed columns, `--date-format`,
+  `--decimal`, `--candidate-column`, `--seed`).
 
 ### Changed
 
@@ -70,6 +87,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ForecastResult.trace` is annotated as `arviz.InferenceData`, and the sample
   arrays as `np.ndarray | None`, instead of `Any` and a mistyped default.
 - API documentation is phrased in party-system-neutral terms.
+- `ModelConfig.pollster_priors` and `shared_bias` are now documented in the
+  class docstring, and `__all__` is sorted and asserted to stay that way.
+- The backtesting module is named `kronikas.backtesting`, so it no longer
+  collides with the `backtest()` function it exports. Previously
+  `from .backtest import backtest` rebound `kronikas.backtest` from the module
+  to the function, so `import kronikas.backtest as m` yielded the function and
+  `pydoc.locate("kronikas.backtest")` — the resolution Sphinx, pdoc and
+  mkdocstrings use — returned the wrong object. The public API is unchanged:
+  `from kronikas import backtest` still gives the function. Two guard tests now
+  assert that no submodule is shadowed by a package-level export and that every
+  submodule resolves for documentation tooling.
 - CI now runs a Python 3.10/3.11/3.12 matrix plus macOS, type checks with mypy,
   verifies the built wheel ships `py.typed`, and runs the **full** test suite
   including MCMC sampling — which `make test-fast` deselects entirely, leaving
