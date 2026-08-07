@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed in the current review
+
+- Forecast runs now exclude polls after `today` (or election day, whichever is
+  earlier); lower-level model construction rejects post-election observations.
+- House effects are zero-sum across both candidates and pollsters in an
+  identifiable `ZeroSumNormal` parameterisation, even without shared bias.
+- Unknown or zero-only shared-bias keys no longer activate a different model.
+- Shared-bias spread is jointly calibrated in vote-share percentage points,
+  and saved scenario results reload with their adjusted samples intact.
+- Shared-bias break-even now tests whether the leader beats every candidate,
+  not merely the original runner-up.
+- Initial support comes from the earliest occupied time node and the largest
+  early candidate is used as the internal log-ratio reference.
+- Poll, prior, sampler, and actual-result inputs reject non-finite or otherwise
+  invalid values; same-date poll ordering is stable.
+- The Dirichlet concentration floor is smooth, and an optional
+  `undecided_column` scales effective sample size by the decided fraction.
+- Supported Python is explicitly constrained to the CI-tested 3.10–3.12 range,
+  and duplicate citation-release automation was removed.
+
+### Changed in the current review
+
+- Backtests report CRPS and call their single-election interval statistic a
+  hit rate rather than claiming it establishes calibration (`coverage_90`
+  remains as a compatibility alias). The old
+  `kronikas.backtest` module path was renamed to `kronikas.backtesting`; import
+  `backtest` from the package root or the new module path.
+
 ### Fixed
 
 - **The time grid now ends exactly on election day.** It is anchored backwards
@@ -61,9 +89,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   forecast one-for-one while *narrowing* the interval, because it reads
   pollster agreement as precision. Both the centre and the spread are settable
   per candidate — the error is not assumed symmetric about zero. Defaults to
-  `None`, reproducing earlier behaviour exactly. When set, house effects are
-  additionally constrained to sum to zero across pollsters so the decomposition
-  is unambiguous. The scale must be supplied rather than learned: a
+  `None`, reproducing earlier behavior apart from the now-unconditional
+  identification constraint on house effects. The scale must be supplied
+  rather than learned: a
   hierarchical scale collapses to zero for the same reason.
 - `ForecastResult.assume_shared_bias()` and `shared_bias_breakeven()`: report
   what an industry-wide error would cost, with no refit, plus the smallest

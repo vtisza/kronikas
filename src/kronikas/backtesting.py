@@ -4,8 +4,8 @@ A forecast that has never been scored is an assertion, not a measurement.  This
 module replays a campaign: for each *as-of* date it discards every poll
 published later, refits the model, and records what the model would have said
 about election day with only the information available at that time.  When the
-true result is supplied, the forecasts are scored for accuracy and for
-calibration of their credible intervals.
+true result is supplied, the forecasts are scored for accuracy, interval hits,
+and the continuous ranked probability score (CRPS).
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import warnings
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -41,6 +41,9 @@ class BacktestPoint:
         error: ``mean - actual`` (signed, percentage points).
         abs_error: ``abs(error)``.
         covered: Whether the 90 % credible interval contained *actual*.
+        crps: Continuous ranked probability score in percentage points. Lower
+            is better; unlike absolute error, it rewards a full predictive
+            distribution that is both sharp and well calibrated.
         converged: Whether the sampler reported a clean fit for this refit.
     """
 
@@ -55,6 +58,7 @@ class BacktestPoint:
     error: float | None = None
     abs_error: float | None = None
     covered: bool | None = None
+    crps: float | None = None
     converged: bool = True
 
 
@@ -91,9 +95,9 @@ class BacktestResult:
         -------
         dict
             ``n_forecasts``, ``n_points`` and, when the true result is known,
-            ``mae`` (mean absolute error, pp), ``rmse``, ``coverage_90`` (share
-            of 90 % intervals containing the truth — well-calibrated intervals
-            give roughly 0.9) and ``bias_by_candidate``.
+            ``mae`` (mean absolute error, pp), ``rmse``, ``mean_crps``,
+            ``interval_hit_rate_90`` (the observed share of 90 % intervals
+            containing the truth) and ``bias_by_candidate``.
 
         Notes
         -----
@@ -113,6 +117,7 @@ class BacktestResult:
         if scored:
             errors = np.array([p.error for p in scored], dtype=np.float64)
             covered = np.array([bool(p.covered) for p in scored], dtype=bool)
+            crps = np.array([cast(float, p.crps) for p in scored], dtype=np.float64)
             names = [p.candidate for p in scored]
             bias_by_candidate: dict[str, float] = {}
             for name in dict.fromkeys(names):
@@ -122,6 +127,11 @@ class BacktestResult:
                 {
                     "mae": float(np.mean(np.abs(errors))),
                     "rmse": float(np.sqrt(np.mean(errors**2))),
+                    "mean_crps": float(np.mean(crps)),
+                    "interval_hit_rate_90": float(np.mean(covered)),
+                    # Backward-compatible alias. The less ambitious name above
+                    # is preferred because one election cannot establish
+                    # repeated-sampling calibration.
                     "coverage_90": float(np.mean(covered)),
                     "bias_by_candidate": bias_by_candidate,
                 }
@@ -146,7 +156,11 @@ class BacktestResult:
             lines.append("-" * 26)
             lines.append(f"  MAE          {stats['mae']:5.2f} pp")
             lines.append(f"  RMSE         {stats['rmse']:5.2f} pp")
-            lines.append(f"  90% coverage {stats['coverage_90']:6.1%}  (target 90.0%)")
+            lines.append(f"  Mean CRPS    {stats['mean_crps']:5.2f} pp")
+            lines.append(
+                f"  90% hit rate  {stats['interval_hit_rate_90']:6.1%}  "
+                "(descriptive; many elections are needed for calibration)"
+            )
 
             lines.append("")
             lines.append("Signed bias by candidate")
@@ -202,10 +216,23 @@ def _normalise_actual(
             f"actual is missing candidates: {sorted(missing)}. Provide a value "
             "for every candidate so the shares can be normalised."
         )
-    total = float(sum(actual.values()))
+    values = np.array([actual[name] for name in candidates], dtype=np.float64)
+    if not np.isfinite(values).all() or (values < 0).any():
+        raise ValueError("actual values must be finite and non-negative.")
+    total = float(values.sum())
     if total <= 0:
         raise ValueError("actual values must sum to a positive number.")
     return {name: float(actual[name]) / total * 100.0 for name in candidates}
+
+
+def _crps_ensemble(samples: np.ndarray, actual: float) -> float:
+    """Exact CRPS for an equally weighted empirical predictive distribution."""
+    ordered = np.sort(np.asarray(samples, dtype=np.float64))
+    n = ordered.size
+    first = np.mean(np.abs(ordered - actual))
+    weights = 2 * np.arange(1, n + 1) - n - 1
+    pairwise_half = float(np.sum(weights * ordered)) / (n * n)
+    return float(first - pairwise_half)
 
 
 def backtest(
@@ -302,7 +329,7 @@ def backtest(
         converged = result.diagnostics is None or result.diagnostics.converged
         n_polls = len(subset.dates)
 
-        for estimate in result.election_day_estimates:
+        for candidate_idx, estimate in enumerate(result.election_day_estimates):
             truth = normalised_actual.get(estimate.name) if normalised_actual else None
             error = estimate.mean - truth if truth is not None else None
             points.append(
@@ -319,6 +346,14 @@ def backtest(
                     abs_error=abs(error) if error is not None else None,
                     covered=(
                         bool(estimate.ci_lower <= truth <= estimate.ci_upper)
+                        if truth is not None
+                        else None
+                    ),
+                    crps=(
+                        _crps_ensemble(
+                            result._samples_for("election_day")[:, candidate_idx],
+                            truth,
+                        )
                         if truth is not None
                         else None
                     ),

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from kronikas.data import PollData, load_polls
+from kronikas.data import PollData, load_polls, polls_from_dataframe
 
 
 class TestLoadPollsHappyPath:
@@ -132,6 +132,76 @@ class TestValidationErrors:
         df.to_csv(path, index=False)
         with pytest.raises(ValueError, match="parse"):
             load_polls(path, date_format="%Y-%m-%d")
+
+    @pytest.mark.parametrize("value", [float("inf"), float("-inf")])
+    def test_non_finite_candidate_value(self, value):
+        frame = pd.DataFrame(
+            {
+                "date": ["2024-01-01"],
+                "pollster": ["P"],
+                "sample_size": [100],
+                "A": [value],
+                "B": [50.0],
+            }
+        )
+        with pytest.raises(ValueError, match="non-finite"):
+            polls_from_dataframe(frame)
+
+    @pytest.mark.parametrize("value", [100.5, float("inf")])
+    def test_invalid_sample_size(self, value):
+        frame = pd.DataFrame(
+            {
+                "date": ["2024-01-01"],
+                "pollster": ["P"],
+                "sample_size": [value],
+                "A": [50.0],
+                "B": [50.0],
+            }
+        )
+        with pytest.raises(ValueError, match="Sample sizes"):
+            polls_from_dataframe(frame)
+
+    def test_blank_pollster_name(self):
+        frame = pd.DataFrame(
+            {
+                "date": ["2024-01-01"],
+                "pollster": ["  "],
+                "sample_size": [100],
+                "A": [50.0],
+                "B": [50.0],
+            }
+        )
+        with pytest.raises(ValueError, match="must not be blank"):
+            polls_from_dataframe(frame)
+
+    def test_undecided_column_reduces_effective_sample_size(self):
+        frame = pd.DataFrame(
+            {
+                "date": ["2024-01-01"],
+                "pollster": ["P"],
+                "sample_size": [1000],
+                "A": [40.0],
+                "B": [40.0],
+                "Undecided": [20.0],
+            }
+        )
+        data = polls_from_dataframe(frame, undecided_column="Undecided")
+        assert data.candidates == ["A", "B"]
+        assert data.sample_sizes[0] == pytest.approx(800.0)
+        assert data.poll_values[0].tolist() == pytest.approx([50.0, 50.0])
+
+    def test_same_date_rows_keep_input_order(self):
+        frame = pd.DataFrame(
+            {
+                "date": ["2024-01-01", "2024-01-01"],
+                "pollster": ["SecondAlphabetically", "FirstAlphabetically"],
+                "sample_size": [100, 200],
+                "A": [40.0, 60.0],
+                "B": [60.0, 40.0],
+            }
+        )
+        data = polls_from_dataframe(frame)
+        assert data.sample_sizes.tolist() == [100.0, 200.0]
 
 
 class TestDecimalParameter:

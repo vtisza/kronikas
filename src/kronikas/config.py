@@ -30,14 +30,25 @@ class PollsterPrior:
             need to be listed; all others default to 0.0.  A positive
             value encodes a belief that the pollster over-estimates that
             candidate; a negative value encodes under-estimation.  Must
-            be in the range (-50, 50).  The reference candidate (last in
-            the data) cannot be set and is always anchored at zero.
-            Values are converted to logit space internally.
+            be in the range (-50, 50). Values are converted to logit space
+            internally and jointly centred across candidates and pollsters.
     """
 
     sigma_house: float | None = None
     kappa_log_sigma: float | None = None
     mu_house: dict[str, float] | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("sigma_house", "kappa_log_sigma"):
+            value = getattr(self, name)
+            if value is not None and (not math.isfinite(value) or value <= 0):
+                raise ValueError(f"{name} must be finite and positive, got {value}.")
+        for candidate, value in (self.mu_house or {}).items():
+            if not math.isfinite(value) or not -50.0 < value < 50.0:
+                raise ValueError(
+                    f"mu_house for {candidate!r} must be finite and in "
+                    f"(-50, 50), got {value}."
+                )
 
 
 @dataclass
@@ -73,8 +84,11 @@ class SharedBiasPrior:
             Candidates omitted default to 0.0.  A non-zero value shifts the
             forecast; use it to encode a directional belief.
         sd: Per-candidate standard deviation, in percentage points.  Candidates
-            omitted fall back to ``default_sd``.  Widens the credible interval
-            to acknowledge that the industry may be collectively wrong.
+            omitted fall back to ``default_sd``. The joint softmax prior is
+            calibrated so non-zero values are marginal share-space standard
+            deviations at the initial support vector, rather than independent
+            logit scales. A candidate with zero direct error can still move
+            indirectly because vote shares must sum to 100 %.
         default_sd: Standard deviation applied to candidates absent from *sd*.
             Zero means the corresponding shift is treated as a fixed offset
             with no added uncertainty — a pure scenario.
@@ -99,11 +113,18 @@ class SharedBiasPrior:
     default_sd: float = 0.0
 
     def __post_init__(self) -> None:
-        if self.default_sd < 0:
-            raise ValueError(f"default_sd must be >= 0, got {self.default_sd}.")
+        if not math.isfinite(self.default_sd) or self.default_sd < 0:
+            raise ValueError(
+                f"default_sd must be >= 0 and finite, got {self.default_sd}."
+            )
+        for name, value in self.mean.items():
+            if not math.isfinite(value):
+                raise ValueError(f"mean for {name!r} must be finite, got {value}.")
         for name, value in self.sd.items():
-            if value < 0:
-                raise ValueError(f"sd for {name!r} must be >= 0, got {value}.")
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(
+                    f"sd for {name!r} must be >= 0 and finite, got {value}."
+                )
 
     def is_inert(self) -> bool:
         """True when the prior would neither shift nor widen anything."""
@@ -217,9 +238,9 @@ class ModelConfig:
             :class:`SharedBiasPrior`.  Defaults to *None*, which reproduces the
             historical behaviour: the polling industry is assumed collectively
             unbiased, with no uncertainty attached to that assumption.  Setting
-            it additionally constrains house effects to sum to zero across
-            pollsters, so ``delta`` means "this pollster relative to the
-            industry" and the common component lives solely in ``shared_bias``.
+            House effects always sum to zero across pollsters, so ``delta``
+            means "this pollster relative to the industry" and the common
+            component lives solely in ``shared_bias`` when configured.
     """
 
     # Sampler
@@ -261,19 +282,68 @@ class ModelConfig:
     shared_bias: SharedBiasPrior | None = None
 
     def __post_init__(self) -> None:
-        if self.time_step_days < 1:
+        if (
+            isinstance(self.time_step_days, bool)
+            or not isinstance(self.time_step_days, int)
+            or self.time_step_days < 1
+        ):
             raise ValueError(
                 f"time_step_days must be a positive integer, got {self.time_step_days}."
             )
-        if self.walk_reference_days < 1:
+        if (
+            isinstance(self.walk_reference_days, bool)
+            or not isinstance(self.walk_reference_days, int)
+            or self.walk_reference_days < 1
+        ):
             raise ValueError(
                 "walk_reference_days must be a positive integer, "
                 f"got {self.walk_reference_days}."
             )
-        for name in ("sigma_walk_prior", "sigma_house_prior", "initial_sigma"):
+        for name in (
+            "sigma_walk_prior",
+            "sigma_house_prior",
+            "initial_sigma",
+            "kappa_log_sigma",
+            "lkj_eta",
+            "r_hat_threshold",
+            "ess_threshold",
+        ):
             value = getattr(self, name)
-            if value <= 0:
-                raise ValueError(f"{name} must be positive, got {value}.")
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be finite and positive, got {value}.")
+        for name, minimum in (("num_tune", 0), ("num_draws", 1), ("num_chains", 1)):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+                comparator = "non-negative" if minimum == 0 else "positive"
+                raise ValueError(f"{name} must be a {comparator} integer, got {value}.")
+        if self.cores is not None and (
+            isinstance(self.cores, bool)
+            or not isinstance(self.cores, int)
+            or self.cores < 1
+        ):
+            raise ValueError(
+                f"cores must be None or a positive integer, got {self.cores}."
+            )
+        if not math.isfinite(self.target_accept) or not 0 < self.target_accept < 1:
+            raise ValueError(
+                f"target_accept must be finite and in (0, 1), got {self.target_accept}."
+            )
+        reserved_sampler_keys = {
+            "draws",
+            "tune",
+            "chains",
+            "cores",
+            "target_accept",
+            "random_seed",
+            "init",
+            "progressbar",
+        }
+        duplicates = reserved_sampler_keys.intersection(self.sampler_kwargs)
+        if duplicates:
+            raise ValueError(
+                "sampler_kwargs duplicates explicitly configured option(s): "
+                f"{sorted(duplicates)}. Set them on ModelConfig instead."
+            )
 
     @property
     def per_step_walk_sigma(self) -> float:

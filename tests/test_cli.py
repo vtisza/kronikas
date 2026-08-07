@@ -326,7 +326,7 @@ class TestBacktestCommand:
         out = capsys.readouterr().out
         assert code == 0
         assert "Backtest report" in out
-        assert "90% coverage" in out
+        assert "90% hit rate" in out
 
     def test_json_report(self, polls_csv: Path, capsys):
         main(

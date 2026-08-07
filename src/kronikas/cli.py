@@ -69,6 +69,14 @@ def _add_data_arguments(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--pollster-column", default="pollster")
     group.add_argument("--sample-size-column", default="sample_size")
     group.add_argument(
+        "--undecided-column",
+        default=None,
+        help=(
+            "Optional undecided/respondent-residual column. It is excluded "
+            "from candidates and reduces each poll's effective sample size."
+        ),
+    )
+    group.add_argument(
         "--candidate-column",
         action="append",
         dest="candidate_columns",
@@ -125,6 +133,7 @@ def _data_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "date_column": args.date_column,
         "pollster_column": args.pollster_column,
         "sample_size_column": args.sample_size_column,
+        "undecided_column": args.undecided_column,
         "candidate_columns": args.candidate_columns,
         "date_format": args.date_format,
         "decimal": args.decimal,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from datetime import date, datetime
 from pathlib import Path
 
@@ -36,6 +37,9 @@ class ElectionForecast:
     decimal:
         Character used as the decimal point in the CSV (default ``"."``).
         Use ``","`` for European-style CSVs.
+    undecided_column:
+        Optional undecided-response column. When supplied, it is excluded from
+        candidates and used to reduce each poll's effective sample size.
 
     Examples
     --------
@@ -60,6 +64,7 @@ class ElectionForecast:
         candidate_columns: list[str] | None = None,
         date_format: str | None = None,
         decimal: str = ".",
+        undecided_column: str | None = None,
     ) -> None:
         self.config = config or ModelConfig()
         self.election_date = _parse_date(election_date, "election_date")
@@ -72,6 +77,7 @@ class ElectionForecast:
             candidate_columns=candidate_columns,
             date_format=date_format,
             decimal=decimal,
+            undecided_column=undecided_column,
         )
 
     @classmethod
@@ -87,6 +93,7 @@ class ElectionForecast:
         sample_size_column: str = "sample_size",
         candidate_columns: list[str] | None = None,
         date_format: str | None = None,
+        undecided_column: str | None = None,
     ) -> ElectionForecast:
         """Build a forecast from an in-memory :class:`pandas.DataFrame`.
 
@@ -111,6 +118,7 @@ class ElectionForecast:
             sample_size_column=sample_size_column,
             candidate_columns=candidate_columns,
             date_format=date_format,
+            undecided_column=undecided_column,
         )
         return instance
 
@@ -120,11 +128,20 @@ class ElectionForecast:
         Emits a :class:`~kronikas.diagnostics.ConvergenceWarning` if the
         posterior shows signs of not having converged.
         """
+        cutoff = min(self.today, self.election_date)
+        fit_data = self.poll_data
+        if self.poll_data.last_poll_date > cutoff:
+            warnings.warn(
+                f"Ignoring polls after the forecast cutoff ({cutoff}); only "
+                "information available by that date may enter the fit.",
+                stacklevel=2,
+            )
+            fit_data = self.poll_data.up_to(cutoff)
         model, metadata = build_model(
-            self.poll_data, self.election_date, self.today, self.config
+            fit_data, self.election_date, self.today, self.config
         )
         trace = run_inference(model, self.config)
-        return extract_results(trace, self.poll_data, metadata, config=self.config)
+        return extract_results(trace, fit_data, metadata, config=self.config)
 
 
 def _parse_date(value: str | date | None, name: str) -> date:

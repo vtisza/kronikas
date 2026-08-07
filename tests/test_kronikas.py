@@ -1,5 +1,7 @@
 """Package-level smoke tests."""
 
+import pytest
+
 import kronikas
 from kronikas import ModelConfig, PollsterPrior
 
@@ -145,3 +147,22 @@ class TestModelConfigDefaults:
         b = ModelConfig()
         a.sampler_kwargs["x"] = 1
         assert "x" not in b.sampler_kwargs
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("num_draws", 0),
+            ("num_chains", 0),
+            ("cores", 0),
+            ("target_accept", 1.0),
+            ("kappa_log_sigma", float("nan")),
+            ("lkj_eta", 0.0),
+        ],
+    )
+    def test_invalid_numeric_configuration_is_rejected(self, field, value):
+        with pytest.raises(ValueError):
+            ModelConfig(**{field: value})
+
+    def test_sampler_kwargs_cannot_duplicate_explicit_options(self):
+        with pytest.raises(ValueError, match="duplicates"):
+            ModelConfig(sampler_kwargs={"draws": 10})

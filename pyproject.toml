@@ -7,7 +7,7 @@ name = "kronikas"
 dynamic = ["version"]
 description = "Hierarchical Bayesian election forecasting from opinion polls"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 license = "Apache-2.0"
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -24,6 +24,7 @@ dependencies = [
     "pandas>=2.0",
     "pymc>=5.10",
     "arviz>=0.17",
+    "xarray>=2022.6",
 ]
 
 [project.optional-dependencies]

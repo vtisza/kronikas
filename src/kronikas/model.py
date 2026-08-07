@@ -31,6 +31,7 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
+import xarray as xr
 
 from .config import ModelConfig, PollsterPrior, SharedBiasPrior
 from .data import PollData
@@ -223,10 +224,10 @@ class ForecastResult:
         -------
         ForecastResult
             A new result with shifted samples, re-derived estimates and
-            re-derived probabilities.  ``trace`` and ``house_effect_samples``
-            are carried over unchanged and therefore still describe the
-            unshifted fit, so :meth:`latent_trend_dataframe` reflects the
-            original forecast.
+            re-derived probabilities. ``trace`` and ``house_effect_samples``
+            still describe the source fit, so :meth:`latent_trend_dataframe`
+            reflects the original forecast. :meth:`save` stores the adjusted
+            sample matrices too, so loading preserves the scenario exactly.
 
         Raises
         ------
@@ -269,6 +270,13 @@ class ForecastResult:
 
         today_samples = _apply(self._samples_for("today"))
         election_samples = _apply(self._samples_for("election_day"))
+
+        return self._with_samples(today_samples, election_samples)
+
+    def _with_samples(
+        self, today_samples: np.ndarray, election_samples: np.ndarray
+    ) -> ForecastResult:
+        """Copy this result and rebuild all summaries from authoritative samples."""
 
         def _estimates(samples: np.ndarray) -> list[CandidateEstimate]:
             return [
@@ -334,7 +342,7 @@ class ForecastResult:
             adjusted = samples.copy()
             adjusted[:, leader] -= shift_pp
             adjusted[:, runner_up] += shift_pp
-            return float(np.mean(adjusted[:, leader] > adjusted[:, runner_up]))
+            return float(np.mean(np.argmax(adjusted, axis=1) == leader))
 
         if probability(0.0) < 0.5:
             return 0.0
@@ -570,8 +578,29 @@ class ForecastResult:
             "today": self.today.isoformat() if self.today else None,
             "time_step_days": self._infer_step_days(),
         }
-        self.trace.attrs["kronikas_metadata"] = json.dumps(metadata)
-        az.to_netcdf(self.trace, str(path))
+        trace_to_save = self.trace.copy()
+        trace_to_save.attrs["kronikas_metadata"] = json.dumps(metadata)
+        if "kronikas_result" in trace_to_save.groups():
+            delattr(trace_to_save, "kronikas_result")
+        if self.today_samples is not None and self.election_samples is not None:
+            trace_to_save.add_groups(
+                {
+                    "kronikas_result": xr.Dataset(
+                        {
+                            "today_samples": (
+                                ("sample", "candidate"),
+                                self.today_samples,
+                            ),
+                            "election_samples": (
+                                ("sample", "candidate"),
+                                self.election_samples,
+                            ),
+                        },
+                        coords={"candidate": self.candidates},
+                    )
+                }
+            )
+        az.to_netcdf(trace_to_save, str(path))
         return path
 
     @classmethod
@@ -602,13 +631,20 @@ class ForecastResult:
             else None,
             "time_step_days": stored["time_step_days"],
         }
-        return _build_result(
+        result = _build_result(
             trace,
             candidates=stored["candidates"],
             pollsters=stored["pollsters"],
             metadata=metadata,
             warn_on_convergence=False,
         )
+        if "kronikas_result" in trace.groups():
+            stored_samples = trace["kronikas_result"]
+            result = result._with_samples(
+                stored_samples["today_samples"].values,
+                stored_samples["election_samples"].values,
+            )
+        return result
 
     def _index_of_date(self, target: date | None) -> int:
         """Index of the grid node nearest *target* (0 when unknown)."""
@@ -811,12 +847,60 @@ def _resolve_shared_bias(
         else np.zeros(len(candidates))
     )
 
-    sd_logit = np.zeros(len(candidates))
+    target_sd_pp = np.zeros(len(candidates))
     for name, k in index.items():
         sd_pp = float(prior.sd.get(name, prior.default_sd))
-        if sd_pp:
-            sd_logit[k] = _pp_sd_to_logit(sd_pp, baseline=float(initial_props[k]))
+        target_sd_pp[k] = sd_pp
+
+    sd_logit = np.zeros(len(candidates))
+    if np.any(target_sd_pp > 0):
+        corrected_baseline = _np_softmax(np.log(initial_props) - mean_logit)
+        centring, sd_logit = _calibrate_shared_bias_spread(
+            target_sd_pp, corrected_baseline
+        )
+        mean_logit = mean_logit + centring
     return mean_logit, sd_logit
+
+
+def _calibrate_shared_bias_spread(
+    target_sd_pp: np.ndarray, baseline: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Calibrate zero-sum logit scales to marginal share-space SDs.
+
+    Softmax couples every candidate, so converting each requested percentage-
+    point SD independently overstates the joint uncertainty. A deterministic
+    Monte Carlo calibration accounts for that coupling and also removes the
+    small Jensen shift, keeping the prior predictive mean at ``baseline``.
+
+    A zero target means no *direct* latent error for that candidate. Its share
+    can still move indirectly because all shares must sum to one.
+    """
+    target = np.asarray(target_sd_pp, dtype=np.float64)
+    baseline = np.asarray(baseline, dtype=np.float64)
+    n_candidates = baseline.size
+    rng = np.random.default_rng(20240517)
+    z = rng.normal(size=(50_000, n_candidates))
+    z -= z.mean(axis=1, keepdims=True)
+    z *= math.sqrt(n_candidates / (n_candidates - 1))
+    # Eliminate finite-simulation scale noise so calibration is reproducible.
+    z /= z.std(axis=0, keepdims=True)
+
+    scales = np.array(
+        [
+            _pp_sd_to_logit(sd, float(base)) if sd > 0 else 0.0
+            for sd, base in zip(target, baseline, strict=True)
+        ]
+    )
+    centring = np.zeros(n_candidates)
+    active = target > 0
+    log_baseline = np.log(baseline)
+    for _ in range(20):
+        draws = _np_softmax(log_baseline - centring - z * scales, axis=1)
+        achieved = draws.std(axis=0) * 100.0
+        scales[active] *= target[active] / np.maximum(achieved[active], 1e-12)
+        centring += np.log(draws.mean(axis=0) / baseline)
+        centring -= centring.mean()
+    return centring, scales
 
 
 def _pt_softmax(x: pt.TensorVariable, axis: int = -1) -> pt.TensorVariable:
@@ -962,6 +1046,13 @@ def build_model(
     n_candidates = len(poll_data.candidates)
     n_pollsters = len(poll_data.pollsters)
 
+    if poll_data.last_poll_date > election_date:
+        raise ValueError(
+            f"Poll data contains observations after election_date "
+            f"({election_date}); filter or correct those rows before building "
+            "the model."
+        )
+
     grid = _build_time_grid(
         poll_data.first_poll_date, election_date, config.time_step_days
     )
@@ -972,7 +1063,6 @@ def build_model(
     grid_offset = (poll_data.first_poll_date - grid.start_date).days
     time_indices = grid.offsets_to_indices(poll_data.dates + grid_offset)
 
-    _warn_on_post_election_polls(poll_data, election_date)
     _warn_if_today_out_of_range(today, grid, election_date)
 
     today_idx = grid.index_of(today)
@@ -981,18 +1071,25 @@ def build_model(
     # ------------------------------------------------------------------
     # Derive initial log-ratios from earliest polls
     # ------------------------------------------------------------------
-    early_mask = time_indices == 0
-    if early_mask.sum() > 0:
-        initial_props = poll_data.poll_values[early_mask].mean(axis=0) / 100.0
-    else:
-        initial_props = poll_data.poll_values.mean(axis=0) / 100.0
+    # The backwards-anchored grid may begin before the first poll, so grid node
+    # zero can legitimately be empty. Initialise from the earliest occupied
+    # node, never from an average that leaks later campaign information back
+    # into the initial-state prior.
+    early_mask = time_indices == time_indices.min()
+    initial_props = poll_data.poll_values[early_mask].mean(axis=0) / 100.0
 
     initial_props = np.clip(initial_props, 1e-4, None)
     initial_props = initial_props / initial_props.sum()
 
-    # K-1 log-ratios relative to the last candidate (reference)
-    ref = initial_props[-1]
-    initial_logratios = np.log(initial_props[:-1] / ref)
+    # Use the largest candidate as the reference. The posterior is invariant to
+    # this choice, but a tiny reference produces unnecessarily extreme
+    # log-ratios and poor sampler geometry.
+    reference_idx = int(np.argmax(initial_props))
+    free_indices = np.array(
+        [k for k in range(n_candidates) if k != reference_idx], dtype=np.int64
+    )
+    ref = initial_props[reference_idx]
+    initial_logratios = np.log(initial_props[free_indices] / ref)
 
     # ------------------------------------------------------------------
     # Observed proportions on the simplex (fractions summing to 1)
@@ -1070,11 +1167,13 @@ def build_model(
     shared_mean_logit = np.zeros(n_candidates)
     shared_sd_logit = np.zeros(n_candidates)
     shared_bias_active = False
-    if config.shared_bias is not None and not config.shared_bias.is_inert():
+    if config.shared_bias is not None:
         shared_mean_logit, shared_sd_logit = _resolve_shared_bias(
             config.shared_bias, list(poll_data.candidates), initial_props
         )
-        shared_bias_active = True
+        shared_bias_active = bool(
+            np.any(shared_mean_logit != 0.0) or np.any(shared_sd_logit != 0.0)
+        )
 
     with pm.Model() as model:
         # === Random-walk volatility ===
@@ -1145,54 +1244,45 @@ def build_model(
         else:
             eta = eta_init[None, :]  # (1, K-1)
 
-        # Pad with zeros for the reference candidate, then softmax → simplex
-        zeros_col = pt.zeros((eta.shape[0], 1))
-        eta_full = pt.concatenate([eta, zeros_col], axis=1)  # (T, K)
+        # Insert a zero column for the reference candidate, preserving the
+        # caller-visible candidate order.
+        eta_full = pt.zeros((eta.shape[0], n_candidates))
+        eta_full = pt.set_subtensor(eta_full[:, free_indices], eta)
         pi = _pt_softmax(eta_full, axis=1)  # (T, K)
 
         pm.Deterministic("pi", pi)
 
         # === House effects (log-ratio space, skip if single pollster) ===
         if include_house:
-            if has_custom_house:
-                # Build per-pollster sigma vector; pollsters without
-                # overrides share a hierarchical sigma_house.
-                needs_hierarchical = len(has_custom_house) < n_pollsters
-                if needs_hierarchical:
-                    sigma_house = pm.HalfNormal(
-                        "sigma_house", sigma=config.sigma_house_prior
-                    )
-                sigma_parts = []
-                for j in range(n_pollsters):
-                    if j in has_custom_house:
-                        sigma_parts.append(np.float64(has_custom_house[j]))
-                    else:
-                        sigma_parts.append(sigma_house)
-                sigma_vec = pt.stack(sigma_parts)  # (n_pollsters,)
-                delta_raw = pm.Normal(
-                    "delta_raw",
-                    mu_matrix,
-                    sigma_vec[:, None],
-                    shape=(n_pollsters, n_candidates),
-                )
-            else:
+            needs_hierarchical = len(has_custom_house) < n_pollsters
+            if needs_hierarchical:
                 sigma_house = pm.HalfNormal(
                     "sigma_house", sigma=config.sigma_house_prior
                 )
-                delta_raw = pm.Normal(
-                    "delta_raw",
-                    mu_matrix,
-                    sigma_house,
-                    shape=(n_pollsters, n_candidates),
-                )
-            # Zero-mean constrain house effects across all K parties for each pollster
-            centred = delta_raw - pt.mean(delta_raw, axis=1, keepdims=True)
-            if shared_bias_active:
-                # Also centre across pollsters, so `delta` means "this pollster
-                # relative to the industry average" and the industry average
-                # lives solely in `shared_bias`. Without this the two terms are
-                # confounded with each other and the decomposition is arbitrary.
-                centred = centred - pt.mean(centred, axis=0, keepdims=True)
+            sigma_parts = [
+                np.float64(has_custom_house[j])
+                if j in has_custom_house
+                else sigma_house
+                for j in range(n_pollsters)
+            ]
+            sigma_vec = pt.stack(sigma_parts)
+
+            # There are only (P-1)*(K-1) identifiable house-effect dimensions.
+            # Sampling a P*K Normal and centring it afterwards leaves P+K-1
+            # flat directions in NUTS. ZeroSumNormal removes those dimensions
+            # from the transform itself. Recentring after per-pollster scaling
+            # preserves both constraints when custom scales are present.
+            delta_raw = pm.ZeroSumNormal(
+                "delta_raw",
+                sigma=1.0,
+                shape=(n_pollsters, n_candidates),
+                n_zerosum_axes=2,
+            )
+            centred_mu = mu_matrix - mu_matrix.mean(axis=1, keepdims=True)
+            centred_mu = centred_mu - centred_mu.mean(axis=0, keepdims=True)
+            centred = pt.as_tensor_variable(centred_mu) + delta_raw * sigma_vec[:, None]
+            centred = centred - pt.mean(centred, axis=1, keepdims=True)
+            centred = centred - pt.mean(centred, axis=0, keepdims=True)
             delta_full = pm.Deterministic("delta", centred)
 
             eta_obs = eta_full[time_indices] + delta_full[poll_data.pollster_ids]
@@ -1205,7 +1295,11 @@ def build_model(
             if np.any(shared_sd_logit > 0):
                 # Non-centred, and candidates with sd == 0 contribute nothing
                 # extra, so a pure point scenario needs no special case.
-                z = pm.Normal("shared_bias_z", 0.0, 1.0, shape=n_candidates)
+                z = pm.ZeroSumNormal(
+                    "shared_bias_z",
+                    sigma=math.sqrt(n_candidates / (n_candidates - 1)),
+                    shape=n_candidates,
+                )
                 shift = shift + z * pt.as_tensor_variable(shared_sd_logit)
             shared = pm.Deterministic("shared_bias", shift)
             # Polls show latent support PLUS the industry's common error, so
@@ -1221,7 +1315,8 @@ def build_model(
             kappa = kappa_scale[poll_data.pollster_ids, None] * sample_sizes
         else:
             kappa = kappa_scale * sample_sizes  # (N, 1)
-        alpha_dir = pt.maximum(mu_obs * kappa, 0.01)  # (N, K)
+        raw_alpha = mu_obs * kappa
+        alpha_dir = 0.01 + pt.softplus(100.0 * (raw_alpha - 0.01)) / 100.0
 
         pm.Dirichlet("obs", a=alpha_dir, observed=observed_fractions)
 
@@ -1236,6 +1331,8 @@ def build_model(
         "today": today,
         "first_poll_date": poll_data.first_poll_date,
         "time_step_days": config.time_step_days,
+        "reference_candidate_idx": reference_idx,
+        "initial_props": initial_props.copy(),
     }
     return model, metadata
 

@@ -9,7 +9,13 @@ import pandas as pd
 import pytest
 
 from kronikas import ElectionForecast, ModelConfig, SharedBiasPrior
-from kronikas.model import _shared_mean_to_logit, build_model
+from kronikas.model import (
+    ForecastResult,
+    _calibrate_shared_bias_spread,
+    _np_softmax,
+    _shared_mean_to_logit,
+    build_model,
+)
 
 TRUE = np.array([45.0, 45.0, 10.0])
 NAMES = ["A", "B", "C"]
@@ -123,6 +129,22 @@ class TestMeanConversion:
             _shared_mean_to_logit(np.array([0.0, 0.0, 25.0]), np.array([0.5, 0.3, 0.2]))
 
 
+class TestSpreadConversion:
+    def test_default_sd_is_a_marginal_share_space_sd(self):
+        baseline = np.array([0.45, 0.45, 0.10])
+        target = np.array([2.5, 2.5, 2.5])
+        centre, scales = _calibrate_shared_bias_spread(target, baseline)
+
+        rng = np.random.default_rng(99)
+        z = rng.normal(size=(200_000, 3))
+        z -= z.mean(axis=1, keepdims=True)
+        z *= np.sqrt(3 / 2)
+        draws = _np_softmax(np.log(baseline) - centre - z * scales, axis=1)
+
+        assert draws.mean(axis=0) * 100 == pytest.approx(baseline * 100, abs=0.08)
+        assert draws.std(axis=0) * 100 == pytest.approx(target, abs=0.08)
+
+
 class TestModelWiring:
     def test_absent_by_default(self, poll_data, election_date, today):
         model, meta = build_model(poll_data, election_date, today, ModelConfig())
@@ -152,7 +174,8 @@ class TestModelWiring:
     def test_unknown_candidate_warns(self, poll_data, election_date, today):
         config = ModelConfig(shared_bias=SharedBiasPrior(mean={"Nobody": 2.0}))
         with pytest.warns(UserWarning, match="does not match any candidate"):
-            build_model(poll_data, election_date, today, config)
+            _, meta = build_model(poll_data, election_date, today, config)
+        assert meta["shared_bias_active"] is False
 
 
 @pytest.mark.slow
@@ -266,3 +289,20 @@ class TestBreakeven:
     def test_returns_none_for_an_unassailable_lead(self, biased_polls):
         base = _fit(biased_polls)
         assert base.shared_bias_breakeven(max_pp=0.01) is None
+
+    def test_counts_every_opponent_when_deciding_if_leader_survives(self):
+        import arviz as az
+
+        result = ForecastResult(
+            today_estimates=[],
+            election_day_estimates=[],
+            win_probabilities={},
+            trace=az.InferenceData(),
+            candidates=["Leader", "Runner", "Third"],
+            today_samples=np.array([[39.0, 16.0, 45.0], [60.0, 30.0, 10.0]]),
+            election_samples=np.array(
+                [[39.0, 16.0, 45.0]] * 6 + [[60.0, 30.0, 10.0]] * 4
+            ),
+        )
+        # Leader beats Runner in every draw, but has the plurality in only 40%.
+        assert result.shared_bias_breakeven() == 0.0
