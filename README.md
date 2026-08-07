@@ -50,6 +50,11 @@ Each row is one poll.  Required columns: **date**, **pollster**,
 **sample_size**, plus one column per candidate with their support value
 (any scale; values are normalised to 100 %).
 
+If undecided respondents are included, pass `undecided_column="Undecided"`.
+That column is excluded from the candidate shares and reduces the effective
+sample size by the decided fraction; otherwise renormalising decided shares
+would make the poll look more precise than it is.
+
 ```csv
 date,pollster,sample_size,Alice,Bob,Carol
 2024-01-15,PollCo,1000,45,40,10
@@ -179,8 +184,9 @@ A `RuntimeError` is raised when the model was run with a single pollster
 ### 6. Save a forecast and reload it later
 
 Sampling takes minutes, so a run worth keeping should not have to be repeated.
-`save()` writes the full posterior to netCDF; `load()` rebuilds an equivalent
-`ForecastResult`.
+`save()` writes the full posterior and the result's authoritative sample
+matrices to netCDF; `load()` rebuilds an equivalent `ForecastResult`, including
+any scenario created with `assume_shared_bias()`.
 
 ```python
 result.save("forecast-2024-03-20.nc")
@@ -356,18 +362,18 @@ report = backtest(
 
 print(report.summary())
 report.to_dataframe()   # tidy: one row per (as-of date, candidate)
-report.metrics()        # MAE, RMSE, 90% coverage, per-candidate bias
+report.metrics()        # MAE, RMSE, mean CRPS, 90% interval hit rate, bias
 ```
 
 `actual` accepts any scale — percentages, fractions, or raw vote counts — and
 is normalised the same way polls are.
 
-Two notes on reading the output. **Coverage** is the calibration check that
-matters most: 90 % credible intervals should contain the truth about 90 % of
-the time, and much less means the model is overconfident. **Bias is reported
-per candidate, never pooled** — forecast and actual shares both sum to 100, so
-signed errors cancel exactly across candidates and a pooled mean would be
-identically zero.
+Two notes on reading the output. **The interval hit rate is descriptive, not a
+calibration estimate from one election.** Reliable coverage claims require
+many sufficiently independent elections. CRPS is the proper score for the
+full marginal predictive distributions. **Bias is reported per candidate,
+never pooled** — forecast and actual shares both sum to 100, so signed errors
+cancel exactly across candidates and a pooled mean would be identically zero.
 
 Each as-of date costs one full MCMC fit, so lower `num_draws` for exploratory
 runs.
@@ -459,11 +465,17 @@ reason to assume the industry's error is symmetric about zero — that is exactl
 the assumption that produced the 97.8 % call above — so if you believe polls
 have historically understated a party, say so.
 
+Non-zero `sd` values are calibrated as marginal percentage-point standard
+deviations around the initial support vector. The errors are joint and
+zero-sum; they are not independent candidate logits. A candidate configured
+with zero direct error can still move indirectly because all shares must sum
+to 100 %.
+
 `shared_bias` defaults to `None`, which reproduces earlier behaviour exactly:
 the industry is assumed collectively unbiased, with no uncertainty attached.
-Setting it also constrains house effects to sum to zero across pollsters, so
-`delta` means "this pollster relative to the industry" and the industry-wide
-component lives solely in `shared_bias`.
+House effects always sum to zero across candidates and pollsters, so `delta`
+means "this pollster relative to the industry". This keeps the latent trend
+identified even when no shared-bias prior is configured.
 
 **The scale must be supplied, not learned.** A hierarchical scale estimated
 from the same polls collapses toward zero for the very reason above, leaving
@@ -494,9 +506,10 @@ The model has three components:
 
 2. **House effects.**
    Each pollster gets a bias term in log-ratio space, drawn from a
-   `Normal(mu_house, sigma_house)` prior. House effects are strictly
-   zero-sum constrained across all K candidates for each pollster, ensuring
-   predictions correctly sum back to 100% without an overall scalar shift.
+   zero-sum Normal prior around `mu_house`. House effects are strictly
+   zero-sum constrained across both candidates and pollsters. This removes
+   unidentifiable sampler dimensions and defines each effect relative to the
+   polling-industry average.
    The mean `mu_house` defaults to zero (no assumed direction of bias) but
    can be set per pollster and per candidate to encode prior knowledge about a
    specific pollster's lean.
@@ -645,8 +658,8 @@ result = ElectionForecast(
 ```
 
 Pollsters without a `mu_house` entry keep the default zero mean; only
-the pollsters you explicitly configure are affected.  Values are converted
-to logit space internally using a 50 % support baseline.
+the pollsters you explicitly configure are affected. Values are converted
+relative to each candidate's initial support level.
 
 ## Lower-level API
 
