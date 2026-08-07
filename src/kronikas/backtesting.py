@@ -117,9 +117,7 @@ class BacktestResult:
         if scored:
             errors = np.array([p.error for p in scored], dtype=np.float64)
             covered = np.array([bool(p.covered) for p in scored], dtype=bool)
-            crps = np.array(
-                [cast(float, p.crps) for p in scored], dtype=np.float64
-            )
+            crps = np.array([cast(float, p.crps) for p in scored], dtype=np.float64)
             names = [p.candidate for p in scored]
             bias_by_candidate: dict[str, float] = {}
             for name in dict.fromkeys(names):

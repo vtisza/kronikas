@@ -141,9 +141,7 @@ class TestSpreadConversion:
         z *= np.sqrt(3 / 2)
         draws = _np_softmax(np.log(baseline) - centre - z * scales, axis=1)
 
-        assert draws.mean(axis=0) * 100 == pytest.approx(
-            baseline * 100, abs=0.08
-        )
+        assert draws.mean(axis=0) * 100 == pytest.approx(baseline * 100, abs=0.08)
         assert draws.std(axis=0) * 100 == pytest.approx(target, abs=0.08)
 
 
