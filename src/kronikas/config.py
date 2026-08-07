@@ -41,6 +41,80 @@ class PollsterPrior:
 
 
 @dataclass
+class SharedBiasPrior:
+    """Prior on the bias that every pollster shares.
+
+    A bias common to the whole polling industry is **not identifiable from a
+    single election's polls**.  The likelihood is exactly invariant to shifting
+    the latent trend one way and every pollster's house effect the other, so no
+    amount of extra polls or extra pollsters can measure it.  Worse, the model's
+    hierarchical ``sigma_house`` is estimated from how much pollsters differ
+    *from each other*, so when they all lean the same way it concludes they are
+    all accurate and passes their common error straight into the forecast,
+    one-for-one.
+
+    Supplying this prior makes that assumption explicit and adjustable instead
+    of implicit and fixed at zero.  Both the centre and the spread are yours to
+    set, per candidate: there is no reason to assume the industry's error is
+    symmetric about zero, and if you believe polls have historically understated
+    a particular party you should be able to say so.
+
+    Values are in **percentage points**, converted internally to log-ratio space
+    relative to each candidate's own support level.  A positive ``mean`` says
+    pollsters **over**-state that candidate; negative says they under-state it.
+
+    The scale must be supplied rather than learned.  A hierarchical scale
+    estimated from the same polls collapses toward zero for exactly the reason
+    above, leaving the term inert.  Reasonable values come from historical
+    polling error in comparable races — often around 2–3 pp.
+
+    Attributes:
+        mean: Per-candidate centre of the shared bias, in percentage points.
+            Candidates omitted default to 0.0.  A non-zero value shifts the
+            forecast; use it to encode a directional belief.
+        sd: Per-candidate standard deviation, in percentage points.  Candidates
+            omitted fall back to ``default_sd``.  Widens the credible interval
+            to acknowledge that the industry may be collectively wrong.
+        default_sd: Standard deviation applied to candidates absent from *sd*.
+            Zero means the corresponding shift is treated as a fixed offset
+            with no added uncertainty — a pure scenario.
+
+    Examples
+    --------
+    Asymmetric, directional belief: polls are thought to overstate the
+    incumbent by 2 pp give or take 1.5, and to be shakier on a small party::
+
+        SharedBiasPrior(
+            mean={"Incumbent": 2.0, "Challenger": -2.0},
+            sd={"Incumbent": 1.5, "Challenger": 1.5, "SmallParty": 3.0},
+        )
+
+    A symmetric "the industry could be off either way" spread::
+
+        SharedBiasPrior(default_sd=2.5)
+    """
+
+    mean: dict[str, float] = field(default_factory=dict)
+    sd: dict[str, float] = field(default_factory=dict)
+    default_sd: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.default_sd < 0:
+            raise ValueError(f"default_sd must be >= 0, got {self.default_sd}.")
+        for name, value in self.sd.items():
+            if value < 0:
+                raise ValueError(f"sd for {name!r} must be >= 0, got {value}.")
+
+    def is_inert(self) -> bool:
+        """True when the prior would neither shift nor widen anything."""
+        no_shift = all(value == 0.0 for value in self.mean.values())
+        no_spread = self.default_sd == 0.0 and all(
+            value == 0.0 for value in self.sd.values()
+        )
+        return no_shift and no_spread
+
+
+@dataclass
 class ModelConfig:
     """Configuration for the hierarchical Bayesian election forecast.
 
@@ -170,6 +244,11 @@ class ModelConfig:
 
     # Per-pollster prior overrides
     pollster_priors: dict[str, PollsterPrior] = field(default_factory=dict)
+
+    # Industry-wide bias (see SharedBiasPrior). ``None`` reproduces the
+    # historical behaviour exactly: the polling industry is assumed to be
+    # collectively unbiased, with no uncertainty attached to that assumption.
+    shared_bias: SharedBiasPrior | None = None
 
     def __post_init__(self) -> None:
         if self.time_step_days < 1:

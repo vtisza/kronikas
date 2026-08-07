@@ -55,6 +55,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `polls_from_dataframe()` and `ElectionForecast.from_dataframe()`: use polls
   already in memory without a CSV round-trip.
 - `PollData.up_to()`, `PollData.poll_dates`, `PollData.last_poll_date`.
+- **Shared polling error** (`SharedBiasPrior`, `ModelConfig.shared_bias`): an
+  explicit prior on the bias every pollster shares, which is not identifiable
+  from a single election's polls and which the model otherwise passes into the
+  forecast one-for-one while *narrowing* the interval, because it reads
+  pollster agreement as precision. Both the centre and the spread are settable
+  per candidate — the error is not assumed symmetric about zero. Defaults to
+  `None`, reproducing earlier behaviour exactly. When set, house effects are
+  additionally constrained to sum to zero across pollsters so the decomposition
+  is unambiguous. The scale must be supplied rather than learned: a
+  hierarchical scale collapses to zero for the same reason.
+- `ForecastResult.assume_shared_bias()` and `shared_bias_breakeven()`: report
+  what an industry-wide error would cost, with no refit, plus the smallest
+  uniform error that erases the leader's advantage. A `--shared-bias` flag
+  exposes both on the CLI.
 - `ModelConfig.compute_log_likelihood` to populate the trace's
   `log_likelihood` group for `arviz.loo` / `arviz.waic`.
 - `ModelConfig` now validates its numeric fields on construction.

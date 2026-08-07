@@ -130,6 +130,42 @@ class TestForecastCommand:
         assert len(payload["election_day_estimates"]) == 3
         assert set(payload["threshold_probabilities"]) == {"5"}
 
+    def test_shared_bias_scenarios(self, polls_csv: Path, capsys):
+        main(
+            [
+                "forecast",
+                str(polls_csv),
+                "--election-date",
+                "2024-06-01",
+                "--shared-bias",
+                "2",
+                "--shared-bias",
+                "4",
+                *FAST_ARGS,
+            ]
+        )
+        out = capsys.readouterr().out
+        assert "industry-wide error" in out
+        assert "2pp" in out and "4pp" in out
+
+    def test_shared_bias_in_json(self, polls_csv: Path, capsys):
+        main(
+            [
+                "forecast",
+                str(polls_csv),
+                "--election-date",
+                "2024-06-01",
+                "--shared-bias",
+                "3",
+                "--json",
+                "-",
+                *FAST_ARGS,
+            ]
+        )
+        payload = json.loads(capsys.readouterr().out)
+        assert set(payload["shared_bias_scenarios"]) == {"3"}
+        assert "shared_bias_breakeven_pp" in payload
+
     def test_json_to_file(self, polls_csv: Path, tmp_path: Path):
         out = tmp_path / "forecast.json"
         main(

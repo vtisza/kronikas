@@ -8,7 +8,7 @@ except PackageNotFoundError:
     __version__ = "unknown"
 
 from .backtest import BacktestPoint, BacktestResult, backtest
-from .config import ModelConfig, PollsterPrior
+from .config import ModelConfig, PollsterPrior, SharedBiasPrior
 from .data import PollData, load_polls, polls_from_dataframe
 from .diagnostics import ConvergenceWarning, SamplingDiagnostics, compute_diagnostics
 from .forecast import ElectionForecast
@@ -24,6 +24,7 @@ __all__ = [
     "ModelConfig",
     "PollData",
     "PollsterPrior",
+    "SharedBiasPrior",
     "SamplingDiagnostics",
     "backtest",
     "compute_diagnostics",
