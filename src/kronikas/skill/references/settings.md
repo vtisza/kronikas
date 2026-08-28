@@ -4,6 +4,13 @@ Every setting in `forecast.yaml`, what it means in plain language, and what it
 does to the model underneath. Start from
 `assets/forecast.template.yaml`.
 
+**You do not have to write this by hand.** `kronikas form polls.csv
+--election-date YYYY-MM-DD` builds a browser page with a control for every
+party and pollster in your own file — chips, steppers and a slider — and the
+finished settings file updates live at the bottom as you go. Download it and
+run `kronikas guided` on it. This page is the reference for what the controls
+mean, and for anything the form does not cover.
+
 **Paths are relative to the settings file.** If `forecast.yaml` and
 `polls.csv` sit side by side, `file: polls.csv` is right, whatever directory
 you run the command from.

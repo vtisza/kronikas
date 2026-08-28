@@ -68,9 +68,10 @@ not something to work around — install a supported interpreter:
 Nothing here is Claude-specific — it is a documented CLI:
 
 ```bash
-kronikas guided forecast.yaml --check   # validate and read back
-kronikas guided forecast.yaml           # fit and report
-kronikas report out/report_data.json    # rebuild the page, no refit
+kronikas form polls.csv --election-date 2026-04-12   # fill in a browser form
+kronikas guided forecast.yaml --check                # validate and read back
+kronikas guided forecast.yaml                        # fit and report
+kronikas report out/report_data.json                 # rebuild the page, no refit
 ```
 
 - **Another assistant** (ChatGPT, Codex, Cursor, Copilot Chat, an agent with

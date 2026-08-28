@@ -43,9 +43,17 @@ what you believe about pollster bias, runs the model, and explains the result.
 
 To drive it yourself, without an assistant:
 
-1. **Describe the race.** Copy
-   [`forecast.template.yaml`](src/kronikas/skill/assets/forecast.template.yaml)
-   and fill it in. Every setting is a word, not a parameter:
+1. **Describe the race.** Either fill in a browser form built from your own
+   poll file —
+
+   ```bash
+   kronikas form polls.csv --election-date 2026-04-12
+   ```
+
+   which writes a self-contained page with a control for every party and
+   pollster it found, and the settings file updating live as you click — or
+   copy [`forecast.template.yaml`](src/kronikas/skill/assets/forecast.template.yaml)
+   and edit it. Every setting is a word, not a parameter:
 
    ```yaml
    election:
@@ -406,10 +414,11 @@ problem, so a scheduled run fails loudly instead of publishing bad numbers.
 Run `kronikas forecast --help` for the full option list, including sampler
 settings and CSV schema overrides.
 
-Three further subcommands serve the guided workflow described above:
-`kronikas guided` runs a forecast from a settings file, `kronikas report`
-rebuilds the HTML page from a finished run, and `kronikas skill install`
-installs the assistant skill.
+Four further subcommands serve the guided workflow described above:
+`kronikas form` builds a browser form for writing a settings file,
+`kronikas guided` runs a forecast from one, `kronikas report` rebuilds the
+HTML page from a finished run, and `kronikas skill install` installs the
+assistant skill.
 
 ## Backtesting
 

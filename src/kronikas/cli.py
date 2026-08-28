@@ -258,6 +258,37 @@ def _run_guided(args: argparse.Namespace) -> int:
     )
 
 
+def _run_form(args: argparse.Namespace) -> int:
+    """Handle the ``form`` subcommand."""
+    from .data import load_polls
+    from .guided.form import build
+
+    poll_data = load_polls(
+        args.polls_csv,
+        date_column=args.date_column,
+        pollster_column=args.pollster_column,
+        sample_size_column=args.sample_size_column,
+        undecided_column=args.undecided_column,
+        candidate_columns=args.candidate_columns,
+        date_format=args.date_format,
+        decimal=args.decimal,
+    )
+    destination = args.output or args.polls_csv.parent / "settings-builder.html"
+    written = build(
+        poll_data,
+        destination,
+        election_date=args.election_date,
+        polls_filename=args.polls_csv.name,
+        decimal=args.decimal,
+    )
+    print(f"Settings form: {written.resolve()}")
+    print(
+        "Open it in a browser, fill it in, and save the file it gives you as "
+        "forecast.yaml next to your polls."
+    )
+    return 0
+
+
 def _run_report(args: argparse.Namespace) -> int:
     """Handle the ``report`` subcommand."""
     from .guided.report import build
@@ -403,6 +434,50 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-report", action="store_true", help="Skip building report.html."
     )
     guided_parser.set_defaults(func=_run_guided)
+
+    form_parser = subparsers.add_parser(
+        "form",
+        help="Build a browser form for writing the settings file.",
+        description=(
+            "Read a poll file and write a self-contained HTML page with a "
+            "control for every party and pollster in it. Fill it in, download "
+            "the settings file, and run 'kronikas guided' on it."
+        ),
+    )
+    form_parser.add_argument("polls_csv", type=Path, help="Path to the poll CSV.")
+    form_parser.add_argument(
+        "--election-date",
+        type=_parse_date,
+        default=None,
+        help="Pre-fill the election date (YYYY-MM-DD).",
+    )
+    form_parser.add_argument("--date-column", default="date")
+    form_parser.add_argument("--pollster-column", default="pollster")
+    form_parser.add_argument("--sample-size-column", default="sample_size")
+    form_parser.add_argument("--undecided-column", default=None)
+    form_parser.add_argument(
+        "--candidate-column",
+        action="append",
+        dest="candidate_columns",
+        metavar="NAME",
+        help="Restrict to this candidate column. Repeat for each candidate.",
+    )
+    form_parser.add_argument("--date-format", default=None)
+    form_parser.add_argument(
+        "--decimal",
+        default=".",
+        help="Decimal separator in the CSV (use ',' for European-style files).",
+    )
+    form_parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Where to write the page (default: settings-builder.html "
+        "beside the poll file).",
+    )
+    form_parser.set_defaults(func=_run_form)
 
     report_parser = subparsers.add_parser(
         "report",

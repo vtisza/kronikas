@@ -483,3 +483,135 @@ def test_cli_reports_a_bad_settings_file_without_a_traceback(tmp_path, capsys):
         main(["guided", str(bad)])
     assert exit_info.value.code == 2
     assert "YYYY-MM-DD" in capsys.readouterr().err
+
+
+# --- the browser form ------------------------------------------------------
+
+
+@pytest.fixture
+def poll_data():
+    from kronikas import load_polls
+
+    return load_polls(ASSETS / "polls.example.csv")
+
+
+def test_form_offers_a_control_for_every_party_and_pollster(poll_data, tmp_path):
+    from kronikas.guided import form
+
+    page = form.build(
+        poll_data, tmp_path / "settings-builder.html", election_date=date(2026, 4, 12)
+    ).read_text(encoding="utf-8")
+
+    for firm in poll_data.pollsters:
+        assert f'name="trust-{firm}"' in page
+        assert f'name="noise-{firm}"' in page
+        for party in poll_data.candidates:
+            assert f'id="lean-{firm}-{party}"' in page
+    for party in poll_data.candidates:
+        assert f'id="industry-{party}"' in page
+    assert 'value="2026-04-12"' in page
+    # Self-contained: it has to work from a file:// URL with no network.
+    assert "http://" not in page and "https://" not in page
+    assert "<script" in page and "src=" not in page.split("<script")[1][:200]
+
+
+def test_form_only_offers_names_that_exist_in_the_poll_file(poll_data, tmp_path):
+    from kronikas.guided import form
+
+    page = form.build(poll_data, tmp_path / "f.html").read_text(encoding="utf-8")
+    assert "PartyA" not in page  # no placeholder names leak through
+    assert page.count('class="card"') == len(poll_data.pollsters)
+
+
+def test_form_escapes_hostile_names(tmp_path):
+    import numpy as np
+
+    from kronikas.data import PollData
+    from kronikas.guided import form
+
+    hostile = PollData(
+        dates=np.array([0]),
+        pollster_ids=np.array([0]),
+        sample_sizes=np.array([1000.0]),
+        poll_values=np.array([[60.0, 40.0]]),
+        candidates=["<script>x</script>", "Unity"],
+        pollsters=["A & B"],
+        first_poll_date=date(2026, 1, 1),
+    )
+    page = form.build(hostile, tmp_path / "f.html").read_text(encoding="utf-8")
+    assert "<script>x</script>" not in page
+    assert "&lt;script&gt;" in page
+    assert "A &amp; B" in page
+
+
+def _chrome() -> str | None:
+    """Any local Chromium, for checking the page's JavaScript actually runs."""
+    import glob
+    import shutil
+
+    for candidate in ("chromium", "chromium-browser", "google-chrome"):
+        found = shutil.which(candidate)
+        if found:
+            return found
+    matches = glob.glob("/opt/pw-browsers/chromium*/chrome-linux/chrome")
+    return matches[0] if matches else None
+
+
+@pytest.mark.skipif(_chrome() is None, reason="no local Chromium to run the page in")
+def test_the_yaml_the_form_generates_is_settings_the_runner_accepts(
+    poll_data, tmp_path
+):
+    """The page builds YAML in JavaScript; this proves the two agree."""
+    import html as html_module
+    import re
+    import subprocess
+
+    from kronikas.guided import form
+
+    page = form.build(
+        poll_data, tmp_path / "form.html", election_date=date(2026, 4, 12)
+    ).read_text(encoding="utf-8")
+    # Fill it in the way a user would, then let the page rebuild its output.
+    firm, party = poll_data.pollsters[0], poll_data.candidates[0]
+    filled = page.replace(
+        "</body>",
+        f"""<script>
+        const trust = 'input[name="trust-{firm}"][value="low"]';
+        document.querySelector(trust).checked = true;
+        document.getElementById("lean-{firm}-{party}").value = "1.5";
+        document.getElementById("industry-{party}").value = "1";
+        document.getElementById("threshold").value = "5";
+        document.dispatchEvent(new Event("input"));
+        </script></body>""",
+    )
+    filled_path = tmp_path / "filled.html"
+    filled_path.write_text(filled, encoding="utf-8")
+    (tmp_path / "polls.csv").write_bytes((ASSETS / "polls.example.csv").read_bytes())
+
+    dom = subprocess.run(
+        [
+            str(_chrome()),
+            "--headless",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--dump-dom",
+            filled_path.as_uri(),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    ).stdout
+    match = re.search(r'<pre id="yaml">(.*?)</pre>', dom, re.S)
+    assert match, "the page produced no YAML"
+    generated = html_module.unescape(match.group(1))
+
+    (tmp_path / "forecast.yaml").write_text(generated, encoding="utf-8")
+    plan = settings.load_plan(tmp_path / "forecast.yaml")
+    assert plan.election_date == date(2026, 4, 12)
+    assert plan.pollsters[firm].trust == "low"
+    assert plan.pollsters[firm].leans == {party: 1.5}
+    assert plan.industry_expected == {party: 1.0}
+    assert plan.industry_uncertainty_pp == 2.5
+    assert plan.thresholds_pp == [5.0]
+    # And it survives the whole way to a model configuration.
+    settings.build_model_config(plan)

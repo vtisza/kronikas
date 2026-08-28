@@ -90,6 +90,20 @@ once the settings are settled.
 A pip-installed PyTensor without a tuned BLAS also samples slowly. A conda
 install is meaningfully faster; `setup.md` has the command.
 
+## The form's Download button does nothing
+
+Some browsers block downloads from a `file://` page. Use **Copy** instead and
+paste the settings into a new file called `forecast.yaml`, or paste them back
+to your assistant and let it write the file.
+
+## The form does not list one of my parties
+
+It lists exactly what the poll file contains. A missing party means the column
+is not being read as a party — usually a stray `Total` or `Other` column
+confusing the reader, or a non-numeric cell. Check the file, then rebuild the
+page; do not add the name by hand, because the run will reject a party that
+the data does not have.
+
 ## The report opens but looks empty
 
 `report.html` needs its sibling files only for *rebuilding*, not for viewing —

@@ -16,9 +16,16 @@ environment step 1 sets up; if it is not on the PATH, use
 
 ## How to run this conversation
 
-- **Ask one small thing at a time**, and always offer a default: "How fast do
-  you think opinion is moving — calm, normal, or volatile? Normal is the usual
-  answer." Never present a wall of options.
+- **Ask with widgets wherever your client has them.** Claude Code's
+  `AskUserQuestion` renders clickable options; use it for every question that
+  has fixed answers, batching up to four at a time, recommended option first.
+  `references/interview.md` gives each question as a ready-made spec — header,
+  wording, options, and what each one does. A click beats a paragraph, and it
+  removes the "hmm, medium I guess" answer entirely.
+- **Type only what cannot be clicked**: dates, file paths, party names, poll
+  numbers. Never offer a menu of guessed dates.
+- **Ask one small thing at a time** otherwise, and put the default inside the
+  question so silence is a valid answer.
 - **Never invent poll numbers, dates, or sample sizes.** If a value is
   missing, ask. A fabricated poll silently corrupts every number downstream.
 - **No jargon in what you say.** Not "prior", "posterior", "R-hat" — say "the
@@ -77,9 +84,23 @@ Details of every column option: `references/settings.md`.
 ## Step 3 — Write the settings file
 
 Copy `$SKILL/assets/forecast.template.yaml` to `<workdir>/forecast.yaml` and
-fill it in from their answers. Interview script, question by question, with
-the exact wording to use: **`references/interview.md`**. What each setting
-does: **`references/settings.md`**.
+fill it in from their answers. The questions, each written as a widget spec
+you can hand straight to `AskUserQuestion`:
+**`references/interview.md`**. What each setting does:
+**`references/settings.md`**.
+
+When the beliefs get fiddly — more than a couple of firms to configure, or a
+lean to set per party — build them a form instead of asking twenty questions:
+
+```bash
+$KRONIKAS form <workdir>/polls.csv --election-date <date>
+```
+
+It reads their poll file and writes `settings-builder.html` with a control for
+every party and every firm actually in it — sliders, steppers, and radio
+buttons, with the finished YAML updating live at the bottom of the page. They
+fill it in, hit **Download**, and you carry on from the file they saved. Tell
+them to open it: it is a local page, so nothing is uploaded anywhere.
 
 The two questions that matter most, and that nobody else will ask them:
 

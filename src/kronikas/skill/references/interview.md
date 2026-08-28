@@ -1,143 +1,153 @@
 # The interview
 
-Everything the settings file needs, as questions a non-technical user can
-answer. Ask in this order. Skip anything you already know. Offer the default
-in the question itself so silence is a valid answer, and write the answers
-into `forecast.yaml` as you go.
+Every answer the settings file needs, as a question a non-technical user can
+answer in one click or one word.
 
-Do not ask all of these at once. Five short exchanges beat one form.
+## Ask with widgets, not with walls of text
 
----
+**If your client can render a structured question — Claude Code's
+`AskUserQuestion`, or any multiple-choice / form control — use it for every
+question below that has fixed options.** Each one is written as a ready-made
+widget spec: a short header, the question, and 2–4 labelled options with the
+consequence of each. Put the recommended option first and mark it
+`(Recommended)`. The user gets a click; you get an unambiguous answer instead
+of "hmm, medium I guess".
 
-## Round 1 — the race
+Rules that matter more than they look:
 
-> **When is the election?** (the day votes are counted)
+- **Batch related questions** — up to four in one widget. One exchange for the
+  whole of round 3 beats four round-trips.
+- **Never widget a free value.** Dates, file paths, party names and poll
+  numbers are typed, not chosen. Asking "which of these four dates" for an
+  election date is worse than asking.
+- **Every option needs its consequence in the description**, not a restatement
+  of the label. "Widens the ranges and lets the line bend faster" tells them
+  something; "opinion moves a lot" does not.
+- **Skip what you can already see.** If the file has one pollster, do not ask
+  which firms they distrust.
+- Without a widget-capable client, ask the same questions in prose, offering
+  the default inside the question so that silence is a valid answer.
 
-→ `election.date`. Required. If they give "next April", ask for the exact day;
-the model anchors its whole time grid on it.
-
-> **Should the forecast use everything up to today, or pretend it is an
-> earlier date?**
-
-→ `election.as_of`. Default today. An earlier date is how you check the model
-against a race that already happened — polls after that date are ignored.
-
-> **What should I call this in the report?**
-
-→ `election.name`. Cosmetic. Skip if they do not care.
-
----
-
-## Round 2 — the polls
-
-> **Do you have the polls in a file, or shall I build one with you?**
-
-If a file exists, read it and report back what you found before asking
-anything else: number of polls, date range, party columns, polling firms.
-Confirm the party columns are the parties and not something else (a "Total"
-or "Other" column is common and easy to misread).
-
-If you are building it: for every poll ask date, firm, sample size, and each
-party's number. **Ask for the sample size.** Without it every poll gets
-treated as equally informative, which is wrong and unfixable later.
-
-> **Is there an undecided or "don't know" column?**
-
-→ `polls.columns.undecided`. If yes, name it. It is then excluded from the
-party shares *and* shrinks the poll's effective sample size, which is the
-honest treatment. Leaving it in as if it were a party is wrong; deleting it
-makes the poll look sharper than it is.
-
-> **Do the numbers use a comma for decimals (45,3)?**
-
-→ `polls.decimal: ","`. Common in European files. Only ask if you see it.
+There is also a browser form for the fiddly per-pollster part —
+`kronikas form polls.csv --election-date YYYY-MM-DD` builds a page with a
+control for every party and firm found in their file, and hands back finished
+YAML. Offer it when the interview would otherwise run to a dozen numbers.
 
 ---
 
-## Round 3 — how fast opinion moves
+## Round 1 — the race (typed, not clicked)
 
-> **Between polls, does opinion in this race move a lot, a little, or
-> normally? Normal means roughly a point a week.**
+> **When is the election — the day the votes are counted?**
 
-→ `beliefs.volatility`: `calm` | `normal` | `volatile`.
+→ `election.date`. Required. "Next April" is not enough; the model anchors its
+entire time grid on the exact day.
 
-- `calm` — entrenched electorate, nothing much happening. Trusts the polls
-  more and gives narrower ranges.
-- `normal` — the default. Use it unless they have a reason.
-- `volatile` — a campaign in motion, a scandal, a new entrant. Widens the
-  ranges and lets the line bend faster.
+> **Do you have the polls in a file, or shall we build one together?**
 
-Guidance if they hesitate: an ordinary campaign is `normal`; a race where the
-numbers have visibly swung inside a month is `volatile`.
+If a file exists, read it and report what you found *before* asking anything
+else: how many polls, the date range, the party columns, the polling firms.
+Confirm the party columns are parties — a `Total` or `Other` column is common
+and easy to misread as a candidate.
 
----
-
-## Round 4 — individual polling firms
-
-> **Do you know of any firm here that consistently reports a particular party
-> higher or lower than the others do?**
-
-Default: no, and the model will work it out. Only record a lean when they
-have a reason from *outside* this poll file — a published methodology review,
-a track record against past results.
-
-If yes, for each firm:
-
-> **Which party, and by how many points, in which direction?**
-
-→ `beliefs.pollsters.<Firm>.leans: {Party: +2}`. Positive means the firm
-reports that party **too high**.
-
-> **How much do you trust this firm overall — high, normal, or low?**
-
-→ `beliefs.pollsters.<Firm>.trust`. `high` holds the firm close to the
-industry average; `low` lets it wander further and quietly reduces its
-influence on the answer. Use `low` for a firm with a poor record rather than
-deleting its polls: dropping data is a stronger claim than distrusting it.
-
-> **Does this firm's sample size look optimistic — do its numbers bounce
-> around more than its stated sample would explain?**
-
-→ `beliefs.pollsters.<Firm>.noisiness: high`. Typical for cheap online panels.
-Only ask this if they have already flagged the firm.
+If you are building the file: for every poll, date, firm, sample size, and each
+party's number. **Always ask for the sample size.** Without it every poll is
+treated as equally informative, which is wrong and cannot be repaired later.
 
 ---
 
-## Round 5 — the question nobody asks
+## Round 2 — the data questions worth a widget
 
-> **Could every firm be wrong in the same direction at once?**
+Ask these only when the file shows a reason to.
 
-Ask this one every time, and explain why before they answer:
+**Header:** `Undecideds` — *only if a column looks like undecided/don't-know*
 
-> When all the pollsters miss the same way — as they have in several recent
-> elections — no model can see it from the polls. They all agree, and the
-> model reads agreement as accuracy: it gets *more* confident, not less.
-> The only fix is for you to tell it how big that shared error could be.
-> Historically it runs about 2 to 3 points. Shall I use 2.5?
+> There's a column called "Undecided". How should the model treat it?
 
-→ `beliefs.industry_error.uncertainty_pp`. Recommend `2.5`. Zero is not a
-neutral choice — it is the claim that the industry is collectively perfect.
+| Option | Description |
+|---|---|
+| Handle it properly (Recommended) | Keeps it out of the party shares and reduces each poll's effective sample size to match. The honest treatment. → `polls.columns.undecided` |
+| Ignore that column | Excludes it entirely. The remaining shares are rescaled, which makes each poll look more precise than it really is. |
 
-If they also believe the error has a *direction*:
+**Header:** `Extra cols` — *only if a non-party numeric column is present*
 
-> **Which party do you think the polls are overstating, and by how much?**
+> Which of these columns are actual parties? Set to multi-select, listing the
+> detected columns.
 
-→ `beliefs.industry_error.expected: {Party: 2}`. Positive means the polls have
-that party too high. Record it as their belief, and make sure the report says
-so — it moves the headline number, and a reader deserves to know why.
+→ `polls.parties`.
 
 ---
 
-## Round 6 — practicalities
+## Round 3 — the beliefs (widget these together)
 
-> **A rough answer in a minute, or a careful one in several?**
+**Header:** `Volatility`
 
-→ `run.effort`: `quick` for exploring, `standard` for anything shown to other
-people, `thorough` when the model complains or the race is close.
+> How fast does opinion move in this race?
 
-> **Is there a threshold that matters — a share a party must clear to win
-> seats at all?**
+| Option | Description |
+|---|---|
+| Normal (Recommended) | About a point a week. The right answer for an ordinary campaign. → `beliefs.volatility: normal` |
+| Volatile | A race in motion — a scandal, a new entrant, numbers that have visibly swung within a month. Widens the ranges and lets the trend line bend faster. |
+| Calm | An entrenched electorate in a quiet period. Trusts the polls more and reports narrower ranges. |
 
-→ `report.thresholds_pp: [5]`. Common in list-PR systems.
+**Header:** `Pollsters`
 
-Then write the file, run `--check`, and read the summary back to them.
+> Do you know of a firm here that consistently reports a party higher or lower
+> than the others do?
+
+| Option | Description |
+|---|---|
+| No — let the model work it out (Recommended) | House effects are estimated from how the firms differ from each other. This is the right answer unless you know something the polls cannot show. |
+| Yes, one or more leans | You'll tell me which firm, which party, and by how many points. Only use outside knowledge — a methodology review, a record against past results. |
+| One firm has a poor record | Sets that firm's trust to low: its polls still count, but count for less. Better than deleting them, which is a stronger claim. |
+
+If they pick "yes", follow up per firm — and if there are more than two firms
+to configure, offer the browser form instead of a chain of questions.
+→ `beliefs.pollsters.<Firm>.leans` / `.trust`
+
+**Header:** `Poll error`
+
+Ask this one **every time**, and explain before offering the options: when all
+the pollsters miss the same way, no model can see it from the polls. They
+agree with each other, and agreement reads as accuracy — so the model gets
+*more* confident, not less.
+
+> How wrong could the whole polling industry be, all at once?
+
+| Option | Description |
+|---|---|
+| About 2.5 points (Recommended) | Matches the industry-wide error in recent comparable elections. → `beliefs.industry_error.uncertainty_pp: 2.5` |
+| About 4 points | For a race with hard-to-reach voters, a new voting system, or a track record of misses. |
+| Assume the polls are collectively unbiased | Zero. Not a neutral choice — it asserts the industry is collectively perfect, which is the assumption behind most famous forecasting failures. |
+| I think they lean a specific way | You name the party and direction; it moves the headline, and the report records that it came from you. → `beliefs.industry_error.expected` |
+
+---
+
+## Round 4 — practicalities (widget these together)
+
+**Header:** `Effort`
+
+> How careful should this run be?
+
+| Option | Description |
+|---|---|
+| Standard (Recommended) | A few minutes. Right for anything you'll show another person. → `run.effort: standard` |
+| Quick | About a minute, coarser numbers. For a first look while you're still adjusting settings. |
+| Thorough | Several times longer. Use when the race is close or a standard run reported trouble. |
+
+**Header:** `Threshold`
+
+> Is there a share a party must clear to win any seats at all?
+
+| Option | Description |
+|---|---|
+| No threshold (Recommended for two-party races) | Skip it. |
+| 5% | Common in list-PR systems. → `report.thresholds_pp: [5]` |
+| Another number | You'll type it. |
+
+---
+
+## Then
+
+Write `forecast.yaml`, run `kronikas guided forecast.yaml --check`, and show
+them the plain-language read-back it prints. Get an explicit "yes, that's
+right" before spending the sampling time.
