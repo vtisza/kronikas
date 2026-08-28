@@ -1,16 +1,12 @@
-#!/usr/bin/env python3
-"""Run a kronikas forecast from a plain-language settings file.
+"""Fit a forecast from a plain-language settings file.
 
-    python run_forecast.py forecast.yaml --check    # validate, no sampling
-    python run_forecast.py forecast.yaml            # fit, then write a report
-
-Everything the report needs is written to ``report_data.json`` in the output
-directory, so the report can be rebuilt or restyled without refitting.
+The guided workflow's engine: takes a validated :class:`~kronikas.guided.settings.Plan`,
+runs the model, writes the data files and the report, and reports back in
+words rather than statistics.  Driven by ``kronikas guided``.
 """
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import difflib
 import json
@@ -22,14 +18,12 @@ from typing import Any
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from _settings import (  # noqa: E402 - after the sys.path fix above
-    SettingsError,
-    build_model_config,
-    describe,
-    load_plan,
-)
+from .. import __version__ as kronikas_version
+from ..data import PollData, load_polls
+from ..forecast import ElectionForecast
+from ..model import CandidateEstimate, ForecastResult
+from . import report as report_builder
+from .settings import Plan, SettingsError, build_model_config, describe
 
 # Okabe-Ito, which stays distinguishable under the common forms of colour
 # blindness. Used when the settings file does not name a colour for a party;
@@ -58,9 +52,8 @@ def _is_noise(message: str) -> bool:
 
 
 def _fail(message: str) -> None:
-    """Stop with a message a non-technical user can act on."""
-    print(f"\nProblem: {message}\n", file=sys.stderr)
-    raise SystemExit(2)
+    """Abort with a message a non-technical user can act on."""
+    raise SettingsError(message)
 
 
 def _suggest(name: str, known: list[str]) -> str:
@@ -68,7 +61,7 @@ def _suggest(name: str, known: list[str]) -> str:
     return f" Did you mean {close[0]!r}?" if close else ""
 
 
-def _check_names(plan: Any, poll_data: Any) -> None:
+def _check_names(plan: Plan, poll_data: PollData) -> None:
     """Refuse party or pollster names that do not appear in the poll file."""
     parties = list(poll_data.candidates)
     for name in sorted(plan.named_parties):
@@ -86,7 +79,7 @@ def _check_names(plan: Any, poll_data: Any) -> None:
             )
 
 
-def _data_overview(plan: Any, poll_data: Any) -> list[str]:
+def _data_overview(plan: Plan, poll_data: PollData) -> list[str]:
     """Plain-language description of the poll file that was read."""
     counts: dict[str, int] = {}
     for index in poll_data.pollster_ids:
@@ -119,13 +112,13 @@ def _data_overview(plan: Any, poll_data: Any) -> list[str]:
     return lines
 
 
-def _uniform_offsets(estimates: list, pp: float) -> dict[str, float]:
+def _uniform_offsets(estimates: list[CandidateEstimate], pp: float) -> dict[str, float]:
     """Move *pp* points from the front-runner to the runner-up."""
     ranked = sorted(estimates, key=lambda e: -e.mean)
     return {ranked[0].name: pp, ranked[1].name: -pp}
 
 
-def _estimate_rows(estimates: list) -> list[dict[str, Any]]:
+def _estimate_rows(estimates: list[CandidateEstimate]) -> list[dict[str, Any]]:
     return [
         {
             "name": e.name,
@@ -145,7 +138,7 @@ def _assign_colors(parties: list[str], overrides: dict[str, str]) -> dict[str, s
     }
 
 
-def _trend_payload(result: Any) -> dict[str, Any]:
+def _trend_payload(result: ForecastResult) -> dict[str, Any]:
     frame = result.latent_trend_dataframe()
     dates = [d.isoformat() for d in result.time_grid] or [
         str(i) for i in range(len(frame))
@@ -161,7 +154,7 @@ def _trend_payload(result: Any) -> dict[str, Any]:
     return {"dates": dates, "series": series}
 
 
-def _poll_payload(poll_data: Any) -> list[dict[str, Any]]:
+def _poll_payload(poll_data: PollData) -> list[dict[str, Any]]:
     rows = []
     for index, poll_date in enumerate(poll_data.poll_dates):
         rows.append(
@@ -178,7 +171,7 @@ def _poll_payload(poll_data: Any) -> list[dict[str, Any]]:
     return rows
 
 
-def _house_effect_payload(result: Any) -> dict[str, Any] | None:
+def _house_effect_payload(result: ForecastResult) -> dict[str, Any] | None:
     try:
         frame = result.house_effects_dataframe()
     except RuntimeError:
@@ -201,7 +194,7 @@ def _house_effect_payload(result: Any) -> dict[str, Any] | None:
     }
 
 
-def _write_tables(result: Any, plan: Any, out: Path) -> None:
+def _write_tables(result: ForecastResult, plan: Plan, out: Path) -> None:
     """Write the CSVs a user might want to open in a spreadsheet."""
     import pandas as pd
 
@@ -244,55 +237,45 @@ def _write_tables(result: Any, plan: Any, out: Path) -> None:
         )
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Run an election forecast from a plain-language settings file."
-    )
-    parser.add_argument("settings", type=Path, help="Path to forecast.yaml")
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Validate the settings and the poll file, then stop. No sampling.",
-    )
-    parser.add_argument(
-        "--output", type=Path, default=None, help="Override report.output_dir."
-    )
-    parser.add_argument(
-        "--save-trace",
-        action="store_true",
-        help="Also write the full posterior to posterior.nc (needs h5netcdf).",
-    )
-    parser.add_argument(
-        "--no-report", action="store_true", help="Skip building report.html."
-    )
-    args = parser.parse_args(argv)
+def run(
+    plan: Plan,
+    *,
+    check_only: bool = False,
+    save_trace: bool = False,
+    build_report: bool = True,
+) -> int:
+    """Validate, fit, and write out a forecast.
 
-    try:
-        plan = load_plan(args.settings)
-    except SettingsError as exc:
-        _fail(str(exc))
-        return 2
-    if args.output is not None:
-        plan.output_dir = args.output
+    Parameters
+    ----------
+    plan:
+        Validated settings, from :func:`kronikas.guided.settings.load_plan`.
+    check_only:
+        Read the poll file and report what would be run, then stop.  Nothing
+        is sampled and nothing is written.
+    save_trace:
+        Also persist the full posterior to ``posterior.nc``.
+    build_report:
+        Write ``report.html`` alongside the data files.
 
-    try:
-        from kronikas import __version__ as kronikas_version
-        from kronikas import load_polls
-    except ImportError:
-        _fail(
-            "kronikas is not installed in this Python environment. Run the "
-            "setup script (scripts/setup_kronikas.sh) first."
-        )
-        return 2
+    Returns
+    -------
+    int
+        ``0`` normally, ``1`` when the sampler reported a convergence problem
+        — so a scheduled run fails loudly rather than publishing bad numbers.
 
+    Raises
+    ------
+    SettingsError
+        When the settings and the poll file disagree, or the file cannot be
+        read.  The message is written for the person who wrote the settings.
+    """
     if not plan.polls_path.exists():
         _fail(f"No poll file at {plan.polls_path}.")
-
     try:
         poll_data = load_polls(plan.polls_path, **plan.loader_kwargs)
     except (ValueError, KeyError) as exc:
         _fail(f"The poll file could not be read: {exc}")
-        return 2
 
     _check_names(plan, poll_data)
     readback = describe(plan)
@@ -307,17 +290,11 @@ def main(argv: list[str] | None = None) -> int:
     for line in overview:
         print(line)
 
-    try:
-        config = build_model_config(plan)
-    except (SettingsError, ValueError) as exc:
-        _fail(str(exc))
-        return 2
+    config = build_model_config(plan)
 
-    if args.check:
-        print("\nSettings and data look usable. Remove --check to run the forecast.")
+    if check_only:
+        print("\nSettings and data look usable. Drop --check to run the forecast.")
         return 0
-
-    from kronikas import ElectionForecast
 
     forecast = ElectionForecast(
         polls_csv=plan.polls_path,
@@ -358,16 +335,15 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     diagnostics = result.diagnostics
+    reference_day = result.today or plan.as_of or date.today()
     payload: dict[str, Any] = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "kronikas_version": kronikas_version,
         "election": {
             "name": plan.election_name,
             "date": plan.election_date.isoformat(),
-            "as_of": (result.today or plan.as_of or date.today()).isoformat(),
-            "days_to_go": (
-                plan.election_date - (result.today or plan.as_of or date.today())
-            ).days,
+            "as_of": reference_day.isoformat(),
+            "days_to_go": (plan.election_date - reference_day).days,
         },
         "parties": list(result.candidates),
         "pollsters": list(result.pollsters),
@@ -406,7 +382,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     _write_tables(result, plan, out)
 
-    if args.save_trace:
+    if save_trace:
         try:
             result.save(out / "posterior.nc")
         except Exception as exc:  # noqa: BLE001 - netCDF backends vary
@@ -433,10 +409,8 @@ def main(argv: list[str] | None = None) -> int:
         for note in diagnostics.notes:
             print(f"  Note: {note}")
 
-    if not args.no_report:
-        import make_report
-
-        make_report.build(out / "report_data.json", out / "report.html")
+    if build_report:
+        report_builder.build(out / "report_data.json", out / "report.html")
         print(f"\nReport: {(out / 'report.html').resolve()}")
     print(f"Files:  {out.resolve()}")
 
@@ -453,7 +427,3 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

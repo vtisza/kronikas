@@ -1,40 +1,21 @@
 """Tests for the guided (non-technical) forecasting workflow.
 
-The workflow lives in ``.claude/skills/election-forecast``: a settings file a
-non-programmer can fill in, a runner, and a self-contained HTML report.  The
-scripts are loaded by path because the skill directory is deliberately not an
-importable package — it is copied around on its own.
+A settings file a non-programmer can fill in, a runner, a self-contained HTML
+report, and the packaged skill an AI assistant follows.
 """
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from datetime import date
 from pathlib import Path
 
 import pytest
 
-SKILL = Path(__file__).resolve().parents[1] / ".claude" / "skills" / "election-forecast"
-SCRIPTS = SKILL / "scripts"
-ASSETS = SKILL / "assets"
+from kronikas.guided import report as make_report
+from kronikas.guided import settings, skill
 
-
-def _load(name: str):
-    """Import a skill script by path."""
-    if str(SCRIPTS) not in sys.path:
-        sys.path.insert(0, str(SCRIPTS))
-    spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules.setdefault(name, module)
-    spec.loader.exec_module(module)
-    return module
-
-
-settings = _load("_settings")
-make_report = _load("make_report")
+ASSETS = Path(settings.__file__).resolve().parent.parent / "skill" / "assets"
 
 
 # --- the YAML subset -------------------------------------------------------
@@ -414,3 +395,91 @@ def test_example_polls_load_with_the_example_settings():
     assert set(plan.named_parties) <= set(poll_data.candidates)
     assert set(plan.pollsters) <= set(poll_data.pollsters)
     assert len(poll_data.dates) > 20
+
+
+# --- the packaged skill ----------------------------------------------------
+
+
+def test_skill_ships_inside_the_package():
+    root = skill.packaged_path()
+    assert (root / "SKILL.md").is_file()
+    assert (root / "assets" / "forecast.template.yaml").is_file()
+    assert len(list((root / "references").glob("*.md"))) >= 5
+
+
+def test_skill_frontmatter_is_usable_by_an_assistant():
+    text = (skill.packaged_path() / "SKILL.md").read_text(encoding="utf-8")
+    assert text.startswith("---\n")
+    frontmatter = text.split("---\n")[1]
+    assert "name: election-forecast" in frontmatter
+    # The description is what makes an assistant pick the skill up at all.
+    assert "description:" in frontmatter
+    assert "forecast" in frontmatter.split("description:")[1].lower()
+
+
+def test_skill_install_copies_the_whole_tree(tmp_path):
+    installed = skill.copy_to(tmp_path)
+    assert installed == tmp_path / "election-forecast"
+    assert (installed / "SKILL.md").is_file()
+    assert (installed / "references" / "interview.md").is_file()
+    assert (installed / "assets" / "polls.example.csv").is_file()
+
+
+def test_skill_install_refuses_to_clobber_an_edited_copy(tmp_path):
+    installed = skill.copy_to(tmp_path)
+    (installed / "SKILL.md").write_text("my edits", encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="--force"):
+        skill.copy_to(tmp_path)
+    assert (installed / "SKILL.md").read_text(encoding="utf-8") == "my edits"
+
+    skill.copy_to(tmp_path, force=True)
+    assert "election-forecast" in (installed / "SKILL.md").read_text(encoding="utf-8")
+
+
+# --- the commands the skill tells people to run ----------------------------
+
+
+def _subcommands() -> set[str]:
+    import argparse
+
+    from kronikas.cli import build_parser
+
+    actions = [
+        action
+        for action in build_parser()._actions
+        if isinstance(action, argparse._SubParsersAction)
+    ]
+    return set(actions[0].choices)
+
+
+def test_every_command_the_skill_documents_actually_exists():
+    """Guards against the docs drifting away from the CLI."""
+    import re
+
+    available = _subcommands()
+    root = skill.packaged_path()
+    documented = set()
+    for path in [root / "SKILL.md", *sorted((root / "references").glob("*.md"))]:
+        text = path.read_text(encoding="utf-8")
+        documented |= set(
+            re.findall(r"kronikas (guided|report|skill|forecast|backtest)\b", text)
+        )
+    assert documented, "the skill documents no commands at all"
+    assert documented <= available
+
+
+def test_guided_and_skill_commands_are_wired(tmp_path):
+    parser = _subcommands()
+    assert {"guided", "report", "skill"} <= parser
+
+
+def test_cli_reports_a_bad_settings_file_without_a_traceback(tmp_path, capsys):
+    from kronikas.cli import main
+
+    bad = tmp_path / "forecast.yaml"
+    bad.write_text("election:\n  date: whenever\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exit_info:
+        main(["guided", str(bad)])
+    assert exit_info.value.code == 2
+    assert "YYYY-MM-DD" in capsys.readouterr().err

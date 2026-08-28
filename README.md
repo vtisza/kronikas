@@ -27,31 +27,64 @@ kronikas is the forecasting engine behind **[százkilencvenkilenc.hu](https://ww
 ## Not a programmer? Start here
 
 Everything below assumes Python. If you would rather answer questions than
-write code, this repository ships a guided workflow at
-[`.claude/skills/election-forecast/`](.claude/skills/election-forecast/) that
-walks you from raw poll numbers to a finished report:
+write code, kronikas ships a guided workflow — a settings file in plain words,
+a one-command run, and a report written to be read rather than decoded.
 
-1. **Set up** — `bash .claude/skills/election-forecast/scripts/setup_kronikas.sh`
-   installs kronikas into a local environment and prints the interpreter to use.
-2. **Describe the race** — copy
-   [`assets/forecast.template.yaml`](.claude/skills/election-forecast/assets/forecast.template.yaml)
-   and fill in plain-language settings: election date, poll file, how fast you
-   think opinion moves, which pollsters lean which way, and how wrong the whole
-   industry could be.
-3. **Check, then run** — `run_forecast.py forecast.yaml --check` validates the
-   settings and reads them back in plain English; without `--check` it fits the
-   model.
-4. **Read the result** — you get `report.html`, a single self-contained page
-   with win probabilities, forecast ranges, the trend with the polls behind it,
-   house effects, a break-even polling-error figure, and a model-health verdict
-   in plain language. No internet connection needed to view it, nothing to
-   install to share it.
+```bash
+pip install kronikas
+kronikas skill install     # hand the workflow to an AI assistant
+```
 
-Used with an AI assistant (Claude Code, or any assistant with shell access),
-`SKILL.md` in that directory turns the whole thing into a conversation: the
-assistant asks the questions, writes the settings file, runs the model, and
-explains the report. Copy the `election-forecast` directory into
-`~/.claude/skills/` to have it available in every project.
+`kronikas skill install` copies a skill into `~/.claude/skills/`, after which
+Claude Code (or any assistant you paste `SKILL.md` into) runs the whole thing
+as a conversation: it asks what the election is, reads your poll file, asks
+what you believe about pollster bias, runs the model, and explains the result.
+`kronikas skill path` prints where the files live.
+
+To drive it yourself, without an assistant:
+
+1. **Describe the race.** Copy
+   [`forecast.template.yaml`](src/kronikas/skill/assets/forecast.template.yaml)
+   and fill it in. Every setting is a word, not a parameter:
+
+   ```yaml
+   election:
+     date: 2026-04-12
+   polls:
+     file: polls.csv
+   beliefs:
+     volatility: normal            # calm | normal | volatile
+     pollsters:
+       Meridian:
+         leans: {Progress: 1.5}    # percentage points, + means overstates
+         trust: low                # high | normal | low
+     industry_error:
+       uncertainty_pp: 2.5         # how wrong every firm could be at once
+   run:
+     effort: standard              # quick | standard | thorough
+   ```
+
+2. **Check, then run.**
+
+   ```bash
+   kronikas guided forecast.yaml --check   # validates and reads back in English
+   kronikas guided forecast.yaml           # fits the model
+   ```
+
+   `--check` catches a misspelled party or pollster name — and suggests the
+   right one — before you spend the sampling time, not after.
+
+3. **Read the report.** You get `report.html`: a single self-contained page
+   with win probabilities, forecast ranges, the trend with the polls behind
+   it, house effects, the break-even polling error, and a model-health verdict
+   in plain language. No internet connection to view it, nothing to install to
+   share it. `kronikas report <dir>/report_data.json` rebuilds the page
+   without refitting.
+
+Word settings map onto the same `ModelConfig` documented below — `volatility:
+volatile` is `sigma_walk_prior=0.10`, `trust: low` is `sigma_house=0.6` — and
+an `advanced:` block passes anything through untouched, so the guided path is
+a front door rather than a walled garden.
 
 ## Installation
 
@@ -372,6 +405,11 @@ for why this cannot be measured from the polls themselves.
 problem, so a scheduled run fails loudly instead of publishing bad numbers.
 Run `kronikas forecast --help` for the full option list, including sampler
 settings and CSV schema overrides.
+
+Three further subcommands serve the guided workflow described above:
+`kronikas guided` runs a forecast from a settings file, `kronikas report`
+rebuilds the HTML page from a finished run, and `kronikas skill install`
+installs the assistant skill.
 
 ## Backtesting
 

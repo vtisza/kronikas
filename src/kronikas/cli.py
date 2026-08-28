@@ -4,6 +4,12 @@ Exposes the forecast and backtest workflows as a ``kronikas`` executable so a
 scheduled job can produce machine-readable output without a Python wrapper::
 
     kronikas forecast polls.csv --election-date 2026-04-12 --json out.json
+
+and the guided workflow for people who would rather answer questions than
+assemble command lines::
+
+    kronikas skill install          # hand the workflow to an AI assistant
+    kronikas guided forecast.yaml   # or drive it yourself
 """
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ from . import __version__
 from .backtesting import backtest
 from .config import ModelConfig
 from .forecast import ElectionForecast
+from .guided.settings import SettingsError
 from .model import ForecastResult
 
 
@@ -235,6 +242,51 @@ def _run_backtest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_guided(args: argparse.Namespace) -> int:
+    """Handle the ``guided`` subcommand."""
+    from .guided.runner import run
+    from .guided.settings import load_plan
+
+    plan = load_plan(args.settings)
+    if args.output is not None:
+        plan.output_dir = args.output
+    return run(
+        plan,
+        check_only=args.check,
+        save_trace=args.save_trace,
+        build_report=not args.no_report,
+    )
+
+
+def _run_report(args: argparse.Namespace) -> int:
+    """Handle the ``report`` subcommand."""
+    from .guided.report import build
+
+    written = build(args.data, args.output)
+    print(f"Report: {written.resolve()}")
+    return 0
+
+
+def _run_skill(args: argparse.Namespace) -> int:
+    """Handle the ``skill`` subcommand."""
+    from .guided import skill
+
+    if args.skill_command == "path":
+        print(skill.packaged_path())
+        return 0
+    target = args.dir or skill.default_target()
+    try:
+        installed = skill.copy_to(target, force=args.force)
+    except FileExistsError as exc:
+        raise ValueError(str(exc)) from None
+    print(f"Skill installed to {installed}")
+    print(
+        "Start your assistant in any directory and ask it to forecast an "
+        "election from your polls."
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Construct the top-level argument parser."""
     parser = argparse.ArgumentParser(
@@ -318,6 +370,82 @@ def build_parser() -> argparse.ArgumentParser:
     )
     backtest_parser.set_defaults(func=_run_backtest)
 
+    guided_parser = subparsers.add_parser(
+        "guided",
+        help="Run a forecast from a plain-language settings file.",
+        description=(
+            "Fit a forecast described by a settings file written in words "
+            "rather than statistics, and write a self-contained HTML report. "
+            "Start from the template printed by 'kronikas skill path'."
+        ),
+    )
+    guided_parser.add_argument(
+        "settings", type=Path, help="Path to the settings file (forecast.yaml)."
+    )
+    guided_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Validate the settings and the poll file, then stop. No sampling.",
+    )
+    guided_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="Override the settings file's report.output_dir.",
+    )
+    guided_parser.add_argument(
+        "--save-trace",
+        action="store_true",
+        help="Also write the full posterior to posterior.nc in the output directory.",
+    )
+    guided_parser.add_argument(
+        "--no-report", action="store_true", help="Skip building report.html."
+    )
+    guided_parser.set_defaults(func=_run_guided)
+
+    report_parser = subparsers.add_parser(
+        "report",
+        help="Rebuild report.html from a finished run, without refitting.",
+    )
+    report_parser.add_argument(
+        "data", type=Path, metavar="REPORT_DATA_JSON", help="Path to report_data.json."
+    )
+    report_parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Where to write the HTML (default: report.html beside the JSON).",
+    )
+    report_parser.set_defaults(func=_run_report)
+
+    skill_parser = subparsers.add_parser(
+        "skill",
+        help="Install the assistant skill for the guided workflow.",
+    )
+    skill_subparsers = skill_parser.add_subparsers(dest="skill_command", required=True)
+    install_parser = skill_subparsers.add_parser(
+        "install", help="Copy the skill where an AI assistant will find it."
+    )
+    install_parser.add_argument(
+        "--dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Skills directory to install into (default: ~/.claude/skills).",
+    )
+    install_parser.add_argument(
+        "--force", action="store_true", help="Overwrite an existing installation."
+    )
+    path_parser = skill_subparsers.add_parser(
+        "path", help="Print where the skill lives inside the installed package."
+    )
+    path_parser.set_defaults(func=_run_skill)
+    install_parser.set_defaults(func=_run_skill)
+    skill_parser.set_defaults(func=_run_skill)
+
     return parser
 
 
@@ -327,7 +455,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
-    except (ValueError, FileNotFoundError) as exc:
+    except (ValueError, FileNotFoundError, SettingsError) as exc:
         parser.exit(2, f"error: {exc}\n")
     return 0
 

@@ -136,7 +136,7 @@ error, CRPS, interval hit rate — use the package's own command, which refits
 at each date:
 
 ```bash
-$PY -m kronikas.cli backtest polls.csv \
+kronikas backtest polls.csv \
     --election-date 2026-04-12 \
     --as-of 2026-01-01 --as-of 2026-02-01 --as-of 2026-03-01 \
     --actual "Progress=41.8,Unity=39.2,Greens=19.0"

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn ``report_data.json`` into a single self-contained HTML report.
 
-    python make_report.py forecast-output/report_data.json
+Driven by ``kronikas report``, and by ``kronikas guided`` at the end of a run.
 
 Standard library only, and every chart is inline SVG, so the file opens in
 any browser with no internet connection, no plotting library, and nothing
@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import html
 import json
-import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -637,17 +636,3 @@ def build(data_path: str | Path, out_path: str | Path | None = None) -> Path:
     data_path = Path(data_path)
     data = json.loads(data_path.read_text(encoding="utf-8"))
     return build_from_data(data, out_path or data_path.with_name("report.html"))
-
-
-def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
-    if not argv:
-        print(__doc__)
-        return 2
-    written = build(argv[0], argv[1] if len(argv) > 1 else None)
-    print(f"Report: {written.resolve()}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

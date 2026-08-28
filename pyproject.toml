@@ -51,9 +51,16 @@ kronikas = "kronikas.cli:main"
 where = ["src"]
 
 # Ship the PEP 561 marker in the wheel; without this the type hints are
-# invisible to downstream type checkers.
+# invisible to downstream type checkers. The skill files travel with it, so
+# `kronikas skill install` works from a plain `pip install kronikas`.
 [tool.setuptools.package-data]
-kronikas = ["py.typed"]
+kronikas = [
+    "py.typed",
+    "skill/*.md",
+    "skill/references/*.md",
+    "skill/assets/*",
+    "skill/scripts/*",
+]
 
 [tool.setuptools_scm]
 

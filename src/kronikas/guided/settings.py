@@ -21,6 +21,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from ..config import ModelConfig, PollsterPrior, SharedBiasPrior
+
 # --- presets ---------------------------------------------------------------
 # Every preset resolves to a plain number that the settings file may also
 # supply directly, so the words are a convenience and never a ceiling.
@@ -577,10 +579,8 @@ def load_plan(path: str | Path) -> Plan:
 # --- kronikas objects ------------------------------------------------------
 
 
-def build_model_config(plan: Plan):  # type: ignore[no-untyped-def]
-    """Translate a :class:`Plan` into a ``kronikas.ModelConfig``."""
-    from kronikas import ModelConfig, PollsterPrior, SharedBiasPrior
-
+def build_model_config(plan: Plan) -> ModelConfig:
+    """Translate a :class:`Plan` into a :class:`~kronikas.ModelConfig`."""
     pollster_priors = {
         name: PollsterPrior(
             sigma_house=belief.sigma_house,
@@ -607,7 +607,7 @@ def build_model_config(plan: Plan):  # type: ignore[no-untyped-def]
         if shared_bias.is_inert():
             shared_bias = None
 
-    fields = {
+    fields: dict[str, Any] = {
         **plan.sampler,
         "random_seed": plan.seed,
         "time_step_days": plan.time_step_days,

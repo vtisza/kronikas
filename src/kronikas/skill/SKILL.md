@@ -9,8 +9,10 @@ Take someone from "I have some poll numbers" to a finished forecast they can
 read, question, and defend. Assume no statistics and no programming. You do
 the mechanics; they supply the data and the judgement calls.
 
-`$SKILL` below means this skill's own directory. `$PY` means the interpreter
-that step 1 prints — never plain `python`, which usually lacks kronikas.
+`$SKILL` below means this skill's own directory — `kronikas skill path` prints
+the packaged copy. `$KRONIKAS` means the `kronikas` command from the
+environment step 1 sets up; if it is not on the PATH, use
+`<workdir>/.kronikas-venv/bin/kronikas`.
 
 ## How to run this conversation
 
@@ -30,17 +32,21 @@ that step 1 prints — never plain `python`, which usually lacks kronikas.
 
 ## Step 1 — Install it (once per machine)
 
+If `kronikas` already runs, skip this. Otherwise:
+
 ```bash
 bash $SKILL/scripts/setup_kronikas.sh --dir <workdir>
 ```
 
 It picks a Python between 3.10 and 3.12, builds a virtual environment at
-`<workdir>/.kronikas-venv`, installs kronikas, and prints the interpreter path.
-That path is `$PY` for the rest of the session. Add `--source` to clone the
-GitHub repository and install from it instead of from PyPI.
+`<workdir>/.kronikas-venv`, installs kronikas, and prints the paths to use.
+`--source` clones the GitHub repository and installs from that instead of
+from PyPI.
 
-It takes a few minutes (PyMC is a large dependency). Say so before you start
-it. Windows without Git Bash, or any failure: `references/setup.md`.
+By hand it is `pip install kronikas` into any Python 3.10–3.12 environment.
+Either way it takes a few minutes (PyMC is a large dependency) — say so before
+you start, rather than leaving the user watching a silent terminal. Windows
+without Git Bash, or any failure: `references/setup.md`.
 
 ## Step 2 — Get the polls into a CSV
 
@@ -62,8 +68,9 @@ date,pollster,sample_size,PartyA,PartyB,PartyC
 - **Undecided voters**: if there is such a column, keep it and name it under
   `polls.columns.undecided`. Dropping it makes every poll look more precise
   than it is.
-- **They just want to see it work** → `$SKILL/assets/polls.example.csv` with
-  `$SKILL/assets/forecast.example.yaml`.
+- **They just want to see it work** → copy `$SKILL/assets/polls.example.csv`
+  and `$SKILL/assets/forecast.example.yaml` into the working directory and run
+  those. About a minute end to end.
 
 Details of every column option: `references/settings.md`.
 
@@ -90,7 +97,7 @@ The two questions that matter most, and that nobody else will ask them:
 ## Step 4 — Check before you spend the time
 
 ```bash
-$PY $SKILL/scripts/run_forecast.py <workdir>/forecast.yaml --check
+$KRONIKAS guided <workdir>/forecast.yaml --check
 ```
 
 Validates the settings and the data without sampling, and reads back — in
@@ -101,7 +108,7 @@ party or pollster name here; the check names the likely intended spelling.
 ## Step 5 — Run it
 
 ```bash
-$PY $SKILL/scripts/run_forecast.py <workdir>/forecast.yaml
+$KRONIKAS guided <workdir>/forecast.yaml
 ```
 
 Minutes, not seconds — `quick` effort is about a minute, `standard` several,
@@ -118,7 +125,7 @@ Writes to `report.output_dir`:
 | `forecast.json` | compact summary for publishing |
 
 Restyle or rebuild the page without refitting:
-`$PY $SKILL/scripts/make_report.py <outdir>/report_data.json`.
+`$KRONIKAS report <outdir>/report_data.json`.
 
 A non-zero exit means the sampler did not settle. Say so plainly, do not
 quote the numbers as if they were fine, and see `references/troubleshooting.md`.

@@ -72,13 +72,21 @@ import kronikas
 print(f"kronikas {kronikas.__version__} is ready.")
 CHECK
 
+KRONIKAS="$(dirname "$PY")/kronikas"
+
 cat <<EOF
 
-Done. Use this interpreter for every later command:
+Done. Use this command for everything that follows:
 
-  $PY
+  $KRONIKAS
 
 For example:
 
-  $PY <skill>/scripts/run_forecast.py forecast.yaml --check
+  $KRONIKAS skill install                  # hand the workflow to an assistant
+  $KRONIKAS guided forecast.yaml --check   # validate your settings
+  $KRONIKAS guided forecast.yaml           # run the forecast
+
+The interpreter, if you need it directly:
+
+  $PY
 EOF

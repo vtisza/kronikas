@@ -1,6 +1,7 @@
 # A complete, runnable example against the bundled sample polls.
-#   python scripts/run_forecast.py assets/forecast.example.yaml --check
-#   python scripts/run_forecast.py assets/forecast.example.yaml
+#   kronikas guided forecast.example.yaml --check
+#   kronikas guided forecast.example.yaml
+# Copy this file and polls.example.csv into the same directory first.
 election:
   name: Sample election 2026
   date: 2026-04-12

@@ -9,15 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- A guided, no-code workflow at `.claude/skills/election-forecast/`: a
+- A guided, no-code workflow, shipped in the package as `kronikas.guided`: a
   plain-language `forecast.yaml` settings file (election, poll CSV, opinion
-  volatility, per-pollster leans and trust, industry-wide polling error), a
-  runner with a `--check` mode that validates settings and data before
-  sampling, and a self-contained HTML report covering win probabilities,
-  forecast ranges, the trend with its polls, house effects, the break-even
-  polling error and a plain-language model-health verdict. Usable directly
-  from a terminal, or as a skill an AI assistant follows to conduct the whole
-  interview.
+  volatility, per-pollster leans and trust, industry-wide polling error) and a
+  self-contained HTML report covering win probabilities, forecast ranges, the
+  trend with its polls, house effects, the break-even polling error and a
+  plain-language model-health verdict.
+- `kronikas guided` runs a forecast from such a settings file, with a `--check`
+  mode that validates the settings and the poll file — naming the likely
+  intended spelling of an unrecognised party or pollster — before sampling.
+- `kronikas report` rebuilds the HTML page from a finished run without
+  refitting.
+- `kronikas skill install` installs the accompanying assistant skill into
+  `~/.claude/skills/`, so an AI assistant can conduct the whole interview.
+  The skill files travel in the wheel and CI checks they are packaged.
 
 ### Fixed in the current review
 
