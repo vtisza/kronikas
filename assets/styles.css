@@ -216,7 +216,7 @@ pre code { font: inherit; }
 .hero h1 {
   font-size: clamp(40px, 6.4vw, 78px);
   font-variation-settings: "SOFT" 0, "WONK" 1, "opsz" 96;
-  max-width: 15ch;
+  max-width: 19ch;
   margin-bottom: 24px;
 }
 .hero h1 em { font-style: normal; color: var(--flame); }
