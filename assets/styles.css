@@ -456,3 +456,12 @@ pre code { font: inherit; }
 /* The primer cards carry no icon, so they need their own top spacing. */
 #what .card h3 { margin-bottom: 12px; }
 #what .card em { font-style: italic; }
+
+/* Category signal beside the wordmark, so the subject stays visible while
+   scrolling. Dropped on narrow screens where the nav is already tight. */
+.brand__what {
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted);
+  border-left: 1px solid var(--rule); padding-left: 11px; margin-left: 2px;
+}
+@media (max-width: 720px) { .brand__what { display: none; } }
