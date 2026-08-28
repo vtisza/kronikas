@@ -9,6 +9,8 @@
 
 **Principled election forecasting from opinion polls, powered by hierarchical Bayesian inference.**
 
+[**Project site →**](https://vtisza.github.io/kronikas/)
+
 Most poll aggregators reduce rich, noisy data into a single point estimate and call it a day. *kronikas* does the opposite: it builds a full generative model of how public opinion evolves, learns each pollster's systematic biases, and propagates every source of uncertainty into honest probability distributions. The result is not just "Party A is at 42 %," but "Party A wins with 73 % probability, and here is the full distribution behind that number." If you are a political scientist, data journalist, election analyst, or anyone who needs defensible, reproducible forecasts from polling data, kronikas gives you a statistically rigorous engine you can trust, and customize, in a single `pip install`.
 
 ## Why kronikas?
