@@ -24,6 +24,35 @@ Most poll aggregators reduce rich, noisy data into a single point estimate and c
 
 kronikas is the forecasting engine behind **[százkilencvenkilenc.hu](https://www.szazkilencvenkilenc.hu/)**, where it powers live Hungarian election forecasts and tracks real-world polling shifts as they happen.
 
+## Not a programmer? Start here
+
+Everything below assumes Python. If you would rather answer questions than
+write code, this repository ships a guided workflow at
+[`.claude/skills/election-forecast/`](.claude/skills/election-forecast/) that
+walks you from raw poll numbers to a finished report:
+
+1. **Set up** — `bash .claude/skills/election-forecast/scripts/setup_kronikas.sh`
+   installs kronikas into a local environment and prints the interpreter to use.
+2. **Describe the race** — copy
+   [`assets/forecast.template.yaml`](.claude/skills/election-forecast/assets/forecast.template.yaml)
+   and fill in plain-language settings: election date, poll file, how fast you
+   think opinion moves, which pollsters lean which way, and how wrong the whole
+   industry could be.
+3. **Check, then run** — `run_forecast.py forecast.yaml --check` validates the
+   settings and reads them back in plain English; without `--check` it fits the
+   model.
+4. **Read the result** — you get `report.html`, a single self-contained page
+   with win probabilities, forecast ranges, the trend with the polls behind it,
+   house effects, a break-even polling-error figure, and a model-health verdict
+   in plain language. No internet connection needed to view it, nothing to
+   install to share it.
+
+Used with an AI assistant (Claude Code, or any assistant with shell access),
+`SKILL.md` in that directory turns the whole thing into a conversation: the
+assistant asks the questions, writes the settings file, runs the model, and
+explains the report. Copy the `election-forecast` directory into
+`~/.claude/skills/` to have it available in every project.
+
 ## Installation
 
 The fastest way to get started:

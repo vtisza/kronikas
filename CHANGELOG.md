@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A guided, no-code workflow at `.claude/skills/election-forecast/`: a
+  plain-language `forecast.yaml` settings file (election, poll CSV, opinion
+  volatility, per-pollster leans and trust, industry-wide polling error), a
+  runner with a `--check` mode that validates settings and data before
+  sampling, and a self-contained HTML report covering win probabilities,
+  forecast ranges, the trend with its polls, house effects, the break-even
+  polling error and a plain-language model-health verdict. Usable directly
+  from a terminal, or as a skill an AI assistant follows to conduct the whole
+  interview.
+
 ### Fixed in the current review
 
 - Forecast runs now exclude polls after `today` (or election day, whichever is

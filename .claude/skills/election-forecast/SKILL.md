@@ -1,0 +1,154 @@
+---
+name: election-forecast
+description: Turn opinion polls into a full election forecast with kronikas — install it, collect the poll data, capture the user's assumptions about pollster bias, run the Bayesian model, and produce a visual report. Use when someone wants to forecast or simulate an election, aggregate or average polls, estimate a party's chance of finishing first, adjust for house effects or a polling error, backtest a past race, or asks "who is going to win" from polling data. Written for users with no statistics or programming background.
+---
+
+# Election forecast, end to end
+
+Take someone from "I have some poll numbers" to a finished forecast they can
+read, question, and defend. Assume no statistics and no programming. You do
+the mechanics; they supply the data and the judgement calls.
+
+`$SKILL` below means this skill's own directory. `$PY` means the interpreter
+that step 1 prints — never plain `python`, which usually lacks kronikas.
+
+## How to run this conversation
+
+- **Ask one small thing at a time**, and always offer a default: "How fast do
+  you think opinion is moving — calm, normal, or volatile? Normal is the usual
+  answer." Never present a wall of options.
+- **Never invent poll numbers, dates, or sample sizes.** If a value is
+  missing, ask. A fabricated poll silently corrupts every number downstream.
+- **No jargon in what you say.** Not "prior", "posterior", "R-hat" — say "the
+  assumption you gave me", "the range of outcomes", "a sign the model did not
+  settle". `references/interpreting.md` has the plain-language phrasing.
+- **Say what a number does not mean**, especially "chance of finishing first"
+  vs "chance of taking office". They are different, and the difference has
+  embarrassed better forecasters than this one.
+- Work in a directory of the user's choosing (default: the current one).
+  Everything — settings, data, results — lives there, so it is easy to keep.
+
+## Step 1 — Install it (once per machine)
+
+```bash
+bash $SKILL/scripts/setup_kronikas.sh --dir <workdir>
+```
+
+It picks a Python between 3.10 and 3.12, builds a virtual environment at
+`<workdir>/.kronikas-venv`, installs kronikas, and prints the interpreter path.
+That path is `$PY` for the rest of the session. Add `--source` to clone the
+GitHub repository and install from it instead of from PyPI.
+
+It takes a few minutes (PyMC is a large dependency). Say so before you start
+it. Windows without Git Bash, or any failure: `references/setup.md`.
+
+## Step 2 — Get the polls into a CSV
+
+The model needs one row per poll:
+
+```csv
+date,pollster,sample_size,PartyA,PartyB,PartyC
+2026-01-15,Meridian,1000,45,40,10
+```
+
+- **They already have a file** → read the first few rows yourself, tell them
+  what you found (how many polls, which firms, what date range), and map any
+  differently-named columns in the settings file rather than editing their data.
+- **They have numbers in a message, a spreadsheet or a web page** → write the
+  CSV for them, then show it back and get an explicit confirmation before
+  running anything. Ask for the sample size of every poll; if a poll genuinely
+  has none, ask for a typical size for that firm and note in the report that
+  it was assumed.
+- **Undecided voters**: if there is such a column, keep it and name it under
+  `polls.columns.undecided`. Dropping it makes every poll look more precise
+  than it is.
+- **They just want to see it work** → `$SKILL/assets/polls.example.csv` with
+  `$SKILL/assets/forecast.example.yaml`.
+
+Details of every column option: `references/settings.md`.
+
+## Step 3 — Write the settings file
+
+Copy `$SKILL/assets/forecast.template.yaml` to `<workdir>/forecast.yaml` and
+fill it in from their answers. Interview script, question by question, with
+the exact wording to use: **`references/interview.md`**. What each setting
+does: **`references/settings.md`**.
+
+The two questions that matter most, and that nobody else will ask them:
+
+1. **Does any single firm lean?** — `beliefs.pollsters.<Firm>.leans`, in
+   percentage points. Only from outside knowledge; the model already learns
+   differences *between* firms on its own.
+2. **Could every firm be wrong the same way?** —
+   `beliefs.industry_error.uncertainty_pp`. This one cannot be measured from
+   the polls, ever: when everybody leans the same way the model reads their
+   agreement as accuracy and gets confident *and* wrong. Left unset, the
+   forecast asserts the industry is collectively perfect. Historically that
+   error runs 2–3 points. Recommend `2.5` unless they have a better number,
+   and tell them what you did.
+
+## Step 4 — Check before you spend the time
+
+```bash
+$PY $SKILL/scripts/run_forecast.py <workdir>/forecast.yaml --check
+```
+
+Validates the settings and the data without sampling, and reads back — in
+plain language — exactly what the model has been told. **Show that read-back
+to the user and get a "yes, that's right" before running.** Fix any misspelled
+party or pollster name here; the check names the likely intended spelling.
+
+## Step 5 — Run it
+
+```bash
+$PY $SKILL/scripts/run_forecast.py <workdir>/forecast.yaml
+```
+
+Minutes, not seconds — `quick` effort is about a minute, `standard` several,
+`thorough` longer on a big file. Tell them before you start; do not run it in
+the background and go quiet.
+
+Writes to `report.output_dir`:
+
+| File | What it is |
+|---|---|
+| `report.html` | the visual report — **this is the deliverable** |
+| `report_data.json` | everything the report draws, for rebuilding it |
+| `estimates.csv`, `trend.csv`, `draws_election_day.csv` | for spreadsheets |
+| `forecast.json` | compact summary for publishing |
+
+Restyle or rebuild the page without refitting:
+`$PY $SKILL/scripts/make_report.py <outdir>/report_data.json`.
+
+A non-zero exit means the sampler did not settle. Say so plainly, do not
+quote the numbers as if they were fine, and see `references/troubleshooting.md`.
+
+## Step 6 — Read the report with them
+
+Open `report.html`, then walk them through it in this order — headline, the
+ranges, the trend, the break-even error, model health. Use
+`references/interpreting.md` for the wording, including what to say when the
+answer is "this race is too close to call" and how to handle "so who wins?".
+
+Point at the break-even number every time. A 1.5-point break-even and a
+9-point break-even are the same forecast in the headline and completely
+different in reality.
+
+## Step 7 — What they will ask next
+
+- *"What if Party X is really 3 points lower?"* → add it to
+  `beliefs.industry_error.expected` and re-run, or read the scenario table
+  already in the report.
+- *"Would this have worked last time?"* → set `election.as_of` to a date
+  before a past election and compare with the real result;
+  `references/settings.md` covers backtesting properly.
+- *"Can I share this?"* → `report.html` is a single self-contained file. It
+  works over email, with no internet connection and nothing to install.
+
+## Never
+
+- Never quote a forecast from a run whose model health section is red.
+- Never fill in a missing poll, sample size or date yourself.
+- Never describe "chance of finishing first" as the chance of governing.
+- Never leave the industry-wide error question unasked. Silence on it is
+  itself an assumption, and the least defensible one available.

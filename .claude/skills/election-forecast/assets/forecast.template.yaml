@@ -1,0 +1,66 @@
+# ---------------------------------------------------------------------------
+# Forecast settings. Every line is optional except election.date and
+# polls.file. Delete what you do not need — anything left out keeps a safe
+# default. Words like "normal" and "standard" are shorthand; you can always
+# write a number instead.
+# ---------------------------------------------------------------------------
+
+election:
+  name: My election 2026        # only used as the report's title
+  date: 2026-04-12              # the day votes are counted (YYYY-MM-DD)
+  as_of: null                   # pretend it is this date; null = today.
+                                # Polls after this date are ignored, which is
+                                # how you check the model against a past race.
+
+polls:
+  file: polls.csv               # one row per poll
+  # Only needed if your columns are named differently:
+  # columns:
+  #   date: poll_date
+  #   pollster: firm
+  #   sample_size: n
+  #   undecided: Undecided      # name it and it is handled properly, not
+  #                             # silently redistributed
+  # parties: [PartyA, PartyB]   # restrict to these columns
+  # date_format: "%d/%m/%Y"     # only for non-ISO dates
+  # decimal: ","                # for European-style numbers like 45,3
+
+beliefs:
+  # How fast can real public opinion move? calm | normal | volatile
+  # normal allows roughly one point of drift per week.
+  volatility: normal
+
+  # What you know about individual polling firms. Leave the block out and the
+  # model works these out from the data instead. Only add a firm here if you
+  # have a reason from outside these polls.
+  # pollsters:
+  #   Meridian:
+  #     leans: {PartyA: 2}      # believed to report PartyA 2 points too high
+  #     trust: normal           # high | normal | low  (how far it may stray)
+  #     noisiness: normal       # low | normal | high  (how much to discount
+  #                             # its stated sample size)
+
+  # An error shared by EVERY pollster cannot be measured from polls — they all
+  # agree, and agreement looks like accuracy. So it has to be stated, not
+  # learned. Leave it out and you are asserting the industry is perfectly
+  # unbiased, which history does not support.
+  # industry_error:
+  #   expected: {PartyA: 2, PartyB: -2}   # + means polls OVERstate the party
+  #   uncertainty_pp: 2.5                 # typical historical error: 2-3
+  #   party_uncertainty: {PartyC: 3.5}    # optional, per party
+
+run:
+  effort: standard              # quick (~1 min, rough) | standard | thorough
+  time_step_days: 7             # how finely the trend is tracked
+  seed: 42                      # same seed = same numbers, every time
+
+report:
+  output_dir: forecast-output
+  thresholds_pp: [5]                     # e.g. a 5 % seat threshold
+  industry_error_scenarios_pp: [1, 2, 3] # "what if every poll is off by N?"
+  # party_colors: {PartyA: "#3366cc", PartyB: "#dc3912"}
+
+# Anything here goes straight to kronikas' ModelConfig, for users who know it.
+# advanced:
+#   correlated_walk: true
+#   num_draws: 4000
