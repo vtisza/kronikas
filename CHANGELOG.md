@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed in the current review
 
+- Added repository-wide coding-agent guidance and harmonized it with the
+  contributor workflow, validation gates, supported Python versions, and
+  machine-readable CLI documentation.
 - Backtests report CRPS and call their single-election interval statistic a
   hit rate rather than claiming it establishes calibration (`coverage_90`
   remains as a compatibility alias). The old

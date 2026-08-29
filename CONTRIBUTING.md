@@ -2,6 +2,8 @@
 
 Thank you for your interest in contributing to **kronikas**! This document
 explains how to set up a development environment, run tests, and submit changes.
+Coding agents must also follow the repository-wide rules in
+[AGENTS.md](AGENTS.md).
 
 ## Getting started
 
@@ -125,7 +127,7 @@ Please run `make check` before submitting a pull request.
 
 The Ruff configuration lives in `pyproject.toml` and enforces:
 
-- Target Python 3.10+.
+- Python 3.10 syntax; the supported and CI-tested runtime range is 3.10–3.12.
 - 88-character line length.
 - Rules: pyflakes (`F`), pycodestyle (`E`), isort (`I`), pyupgrade (`UP`),
   flake8-bugbear (`B`), and flake8-simplify (`SIM`).

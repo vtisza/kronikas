@@ -341,6 +341,8 @@ for why this cannot be measured from the polls themselves.
 
 `kronikas forecast` exits non-zero when the sampler reports a convergence
 problem, so a scheduled run fails loudly instead of publishing bad numbers.
+Use `--quiet` for scheduled or machine-readable runs so sampler progress does
+not interfere with automation.
 Run `kronikas forecast --help` for the full option list, including sampler
 settings and CSV schema overrides.
 
@@ -696,7 +698,10 @@ az.plot_trace(result.trace, var_names=["sigma_walk", "kappa_log"])
 
 We welcome contributions of all kinds: bug reports, feature ideas, documentation improvements, and code. Whether you're fixing a typo or building a new feature, we'd love to have you involved.
 
-👉 **See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding guidelines, and how to submit a pull request.**
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding
+guidelines, and how to submit a pull request. Coding agents must additionally
+follow the repository-wide [AGENTS.md](AGENTS.md) development and contribution
+rules.
 
 ## Citation
 
