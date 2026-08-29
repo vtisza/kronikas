@@ -292,6 +292,8 @@ def _headline(data: dict[str, Any]) -> str:
         if days == 0
         else f"{abs(days)} days after the vote"
     )
+    country = data["election"].get("country")
+    where = f"{_esc(country)} &middot; " if country else ""
     breakeven = data.get("breakeven_pp")
     if breakeven is None:
         fragility = (
@@ -317,7 +319,7 @@ def _headline(data: dict[str, Any]) -> str:
         )
     return f"""
     <section class="headline">
-      <p class="kicker">Forecast for {_esc(data["election"]["date"])}
+      <p class="kicker">{where}Forecast for {_esc(data["election"]["date"])}
         &middot; made {when} using polls up to
         {_esc(data["election"]["as_of"])}</p>
       <h1>{_esc(leader)} leads, with a {_pct(probs[leader])} chance of
@@ -478,15 +480,61 @@ def _settings_section(data: dict[str, Any]) -> str:
     """
 
 
-CAVEATS = """
+# What "most votes" is worth, per system. The generic line is true everywhere
+# and says little; a specific one tells the reader what actually stands
+# between this number and someone taking office.
+SYSTEM_CAVEATS = {
+    "list-pr": (
+        "Seats are shared out roughly in proportion to these shares, so the "
+        "largest party often does not govern: a coalition of smaller ones can, "
+        "and any threshold decides who is in the arithmetic at all. Nothing "
+        "about coalitions is modelled here."
+    ),
+    "districts": (
+        "Seats are won district by district, so the national vote share here "
+        "and the seat count can point different ways — a party can lead the "
+        "vote and lose the chamber. This model says nothing about where the "
+        "votes fall."
+    ),
+    "mixed": (
+        "Some seats are won district by district and some allocated from "
+        "lists, so the seat count depends on geography as well as these "
+        "shares. A lead here is not a majority."
+    ),
+    "runoff": (
+        "This is the first round. Who leads it and who wins the second are "
+        "different questions: the second turns on where eliminated "
+        "candidates' voters go, which is not in this data."
+    ),
+    "plurality": (
+        "The most votes nationally does decide this contest, so these shares "
+        "are close to the question — but turnout and late movement still sit "
+        "between them and the result."
+    ),
+    "electoral-college": (
+        "The national vote share does not decide this election. An "
+        "intermediate body does, and its arithmetic can and has contradicted "
+        "the national vote. Treat this as a popular-vote statistic only."
+    ),
+}
+
+GENERIC_CAVEAT = (
+    "It is the probability that a party polls higher than every other on "
+    "election day. Under runoffs, district seats, electoral colleges or "
+    "coalition maths, that is not the probability of taking office."
+)
+
+
+def _caveats(data: dict[str, Any]) -> str:
+    """The limits of the numbers, with the vote-share one made specific."""
+    system = (data.get("election") or {}).get("system")
+    vote_share_caveat = SYSTEM_CAVEATS.get(system or "", GENERIC_CAVEAT)
+    return f"""
     <section>
       <h2>What these numbers do and do not say</h2>
       <ul>
         <li><strong>"Chance of finishing first" is about vote share, not
-          power.</strong> It is the probability that a party polls higher than
-          every other on election day. Under runoffs, district seats, electoral
-          colleges or coalition maths, that is not the probability of taking
-          office.</li>
+          power.</strong> {vote_share_caveat}</li>
         <li><strong>The ranges are wide on purpose.</strong> The 90% range is
           where the vote share is expected to land nine times out of ten, given
           the polls and the assumptions listed above.</li>
@@ -499,6 +547,7 @@ CAVEATS = """
       </ul>
     </section>
 """
+
 
 STYLE = """
 :root {
@@ -574,8 +623,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
 
 def render(data: dict[str, Any]) -> str:
     """Build the complete HTML document."""
+    election = data["election"]
+    country_title = (
+        f"{election['country']} election forecast" if election.get("country") else None
+    )
     title = (
-        data["election"].get("name") or f"Election forecast {data['election']['date']}"
+        election.get("name") or country_title or f"Election forecast {election['date']}"
     )
     election_ranges = _range_chart(data["election_day_estimates"], data["colors"])
     today_ranges = _range_chart(data["today_estimates"], data["colors"])
@@ -616,7 +669,7 @@ def render(data: dict[str, Any]) -> str:
 {_house_section(data)}
 {_health_section(data)}
 {_settings_section(data)}
-{CAVEATS}
+{_caveats(data)}
 <footer>Produced by kronikas {_esc(data.get("kronikas_version", ""))} on
 {_esc(data.get("generated_at", ""))}. Rebuild this page from
 report_data.json without refitting the model.</footer>

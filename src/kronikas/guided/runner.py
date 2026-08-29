@@ -341,6 +341,8 @@ def run(
         "kronikas_version": kronikas_version,
         "election": {
             "name": plan.election_name,
+            "country": plan.country,
+            "system": plan.system,
             "date": plan.election_date.isoformat(),
             "as_of": reference_day.isoformat(),
             "days_to_go": (plan.election_date - reference_day).days,

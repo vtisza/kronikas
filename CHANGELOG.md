@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `kronikas guided` runs a forecast from such a settings file, with a `--check`
   mode that validates the settings and the poll file — naming the likely
   intended spelling of an unrecognised party or pollster — before sampling.
+- The guided workflow asks where the election is and how votes turn into power
+  (`election.country`, `election.system`). Neither changes a number: the system
+  selects which caveat the report prints about what "most votes" is worth, so a
+  list-PR forecast says the largest party often does not govern and a runoff
+  forecast says these are first-round shares. Unrecognised systems are accepted
+  and reported verbatim, falling back to the general caveat.
 - `kronikas form` builds a self-contained browser page for writing the settings
   file, with a control for every party and pollster found in the user's own
   poll file and the resulting YAML updating live. Offered because the beliefs

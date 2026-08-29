@@ -28,6 +28,8 @@ default — the check step names it and stops.
 | `date` | **required** | The day votes are counted, `YYYY-MM-DD`. The model's time grid ends exactly here, so the election-day estimate carries no stray extra drift. |
 | `as_of` | today | Pretend it is this date. Polls after it are dropped from the fit. This is how you replay a past race. |
 | `name` | none | Title shown on the report. Cosmetic. |
+| `country` | none | Where the election is. Recorded on the report so a reader knows which race it is. Changes no number. |
+| `system` | none | How votes become power: `list-pr`, `districts`, `mixed`, `runoff`, `plurality`, `electoral-college`, or any other text. Changes no number either — it selects which caveat the report prints about what "most votes" is worth. Under list-PR the largest party often does not govern; in a runoff these are first-round shares. Left unset, the report prints a general caveat covering every system. |
 
 ## `polls`
 

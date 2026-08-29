@@ -42,6 +42,38 @@ YAML. Offer it when the interview would otherwise run to a dozen numbers.
 → `election.date`. Required. "Next April" is not enough; the model anchors its
 entire time grid on the exact day.
 
+
+> **Which country or region is this election in?**
+
+→ `election.country`. Typed, not clicked. It appears on the report so a reader
+knows which race they are looking at, and it tells you what to expect in the
+data — a European file will often use `45,3` rather than `45.3`.
+
+**It does not give you a polling-error figure.** If you happen to know a
+well-established number for that country's recent industry-wide error, propose
+it in round 3 **and name where it comes from**. If you cannot name a source,
+use the default and say so. An invented country-specific number is worse than
+a stated generic one, because it looks researched.
+
+**Header:** `System`
+
+> How do votes turn into power there?
+
+| Option | Description |
+|---|---|
+| Proportional, party lists | Seats shared roughly in proportion; the largest party often does not govern. → `election.system: list-pr` |
+| One seat per district | Seats won district by district; the national vote share and the seat count can point different ways. → `districts` |
+| Districts plus lists | Some seats local, some allocated from lists. → `mixed` |
+| Two rounds | This forecast is the first round only; the second turns on where eliminated candidates' voters go. → `runoff` |
+| One nationwide contest | Most votes wins outright — the one case where these shares nearly are the answer. → `plurality` |
+| An electoral college | The national vote share does not decide it. → `electoral-college` |
+
+Anything else they say is accepted verbatim; the report falls back to the
+general caveat. **This changes no number** — it changes what the report says
+"chance of finishing first" is worth, which is the most misread thing in any
+forecast. Ask it, and if they pick a system with a threshold, that is your cue
+for the threshold question in round 4.
+
 > **Do you have the polls in a file, or shall we build one together?**
 
 If a file exists, read it and report what you found *before* asking anything

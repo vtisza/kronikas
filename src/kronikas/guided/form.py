@@ -135,6 +135,10 @@ function buildYaml() {
   const name = q("election-name").value.trim();
   if (name) lines.push(`  name: ${JSON.stringify(name)}`);
   lines.push(`  date: ${q("election-date").value || "YYYY-MM-DD"}`);
+  const country = q("country").value.trim();
+  if (country) lines.push(`  country: ${JSON.stringify(country)}`);
+  const system = val("system");
+  if (system) lines.push(`  system: ${system}`);
   const asOf = q("as-of").value;
   if (asOf) lines.push(`  as_of: ${asOf}`);
 
@@ -386,6 +390,33 @@ Pollsters: {_esc(", ".join(pollsters))}.</p>
     <label class="lead" for="election-name">What to call it on the report
       (optional)</label>
     <input type="text" id="election-name" placeholder="General election 2026">
+  </div>
+  <div class="field">
+    <label class="lead" for="country">Which country or region?</label>
+    <input type="text" id="country" placeholder="Hungary">
+    <p class="hint">Recorded on the report so a reader knows which race this
+      is. It does not change the model.</p>
+  </div>
+  <div class="field">
+    <label class="lead">How do votes turn into power here?</label>
+    {
+        _chips(
+            "system",
+            [
+                ("", "Not sure / skip"),
+                ("list-pr", "Proportional party lists"),
+                ("districts", "One seat per district"),
+                ("mixed", "Districts plus lists"),
+                ("runoff", "Two rounds"),
+                ("plurality", "One nationwide contest"),
+                ("electoral-college", "An electoral college"),
+            ],
+            "",
+        )
+    }
+    <p class="hint">This decides what "most votes" is actually worth, so the
+      report can say what stands between these shares and someone taking
+      office. It does not change the numbers.</p>
   </div>
   <div class="field">
     <label class="lead" for="as-of">Forecast as if it were … (optional)</label>

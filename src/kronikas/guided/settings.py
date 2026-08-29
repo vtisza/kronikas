@@ -74,8 +74,22 @@ NOISINESS_PRESETS: dict[str, float | None] = {
     "high": 1.00,
 }
 
+# How votes turn into power. Keyed on the mechanism rather than the country,
+# because the mechanism is what decides how far "most votes" is from "governs"
+# — and that gap is the single most misread thing about any forecast. Any
+# other string is accepted and reported verbatim; it just gets the general
+# caveat instead of a specific one.
+ELECTORAL_SYSTEMS = {
+    "list-pr": "proportional, party lists",
+    "districts": "one seat per district, most votes wins each",
+    "mixed": "districts plus compensatory party lists",
+    "runoff": "two rounds",
+    "plurality": "one nationwide contest, most votes wins",
+    "electoral-college": "an intermediate body elects the winner",
+}
+
 TOP_LEVEL_KEYS = {"election", "polls", "beliefs", "run", "report", "advanced"}
-ELECTION_KEYS = {"name", "date", "as_of"}
+ELECTION_KEYS = {"name", "date", "as_of", "country", "system"}
 POLLS_KEYS = {"file", "columns", "parties", "date_format", "decimal"}
 COLUMN_KEYS = {"date", "pollster", "sample_size", "undecided"}
 BELIEF_KEYS = {"volatility", "pollsters", "industry_error"}
@@ -285,6 +299,8 @@ class Plan:
     polls_path: Path
     election_name: str | None = None
     as_of: date | None = None
+    country: str | None = None
+    system: str | None = None
     loader_kwargs: dict[str, Any] = field(default_factory=dict)
     volatility: str = "normal"
     sigma_walk_prior: float = VOLATILITY_PRESETS["normal"]
@@ -411,6 +427,12 @@ def normalise(raw: dict[str, Any], *, base_dir: Path | None = None) -> Plan:
         if election.get("as_of") is not None
         else None
     )
+    system = election.get("system")
+    if system is not None and not isinstance(system, str):
+        raise SettingsError(
+            f"election.system must be text, got {system!r}. Known values: "
+            f"{', '.join(sorted(ELECTORAL_SYSTEMS))}."
+        )
     if as_of is not None and as_of > election_date:
         raise SettingsError(
             f"election.as_of ({as_of}) is after election.date ({election_date}); "
@@ -550,6 +572,8 @@ def normalise(raw: dict[str, Any], *, base_dir: Path | None = None) -> Plan:
         polls_path=polls_path,
         election_name=str(election["name"]) if election.get("name") else None,
         as_of=as_of,
+        country=str(election["country"]) if election.get("country") else None,
+        system=system.strip().lower() if system else None,
         loader_kwargs=loader_kwargs,
         volatility=volatility,
         sigma_walk_prior=float(sigma_walk),
@@ -628,6 +652,15 @@ def build_model_config(plan: Plan) -> ModelConfig:
     return ModelConfig(**fields)
 
 
+def describe_system(system: str | None) -> str:
+    """Name an electoral system, expanding the ones the report knows about."""
+    if not system:
+        return "not stated"
+    if system in ELECTORAL_SYSTEMS:
+        return f"{system} — {ELECTORAL_SYSTEMS[system]}"
+    return system
+
+
 def describe(plan: Plan) -> list[str]:
     """Plain-language read-back of every choice, for confirmation and the report."""
     lines = [
@@ -636,6 +669,8 @@ def describe(plan: Plan) -> list[str]:
         f"Election day: {plan.election_date.day} "
         f"{plan.election_date:%B %Y}"
         + (f" ({plan.election_name})" if plan.election_name else ""),
+        f"Where: {plan.country or 'country not stated'}",
+        f"How votes become power: {describe_system(plan.system)}",
         f"Forecast made as if it were: {plan.as_of or 'today'}",
         f"Polls read from: {plan.polls_path}",
         f"Opinion moves: {plan.volatility} "

@@ -102,7 +102,15 @@ buttons, with the finished YAML updating live at the bottom of the page. They
 fill it in, hit **Download**, and you carry on from the file they saved. Tell
 them to open it: it is a local page, so nothing is uploaded anywhere.
 
-The two questions that matter most, and that nobody else will ask them:
+Ask **where** and **what kind of election** early —
+`election.country` and `election.system`. Neither changes a single number, and
+that is the point: the system decides what "most votes" is worth, so the report
+can say what actually stands between these shares and someone taking office.
+Under list-PR the largest party often does not govern; in a runoff this is only
+the first round. Getting that wrong is the most common way a correct forecast
+misleads a reader.
+
+Then the two questions that matter most, and that nobody else will ask them:
 
 1. **Does any single firm lean?** — `beliefs.pollsters.<Firm>.leans`, in
    percentage points. Only from outside knowledge; the model already learns
@@ -113,7 +121,10 @@ The two questions that matter most, and that nobody else will ask them:
    agreement as accuracy and gets confident *and* wrong. Left unset, the
    forecast asserts the industry is collectively perfect. Historically that
    error runs 2–3 points. Recommend `2.5` unless they have a better number,
-   and tell them what you did.
+   and tell them what you did. If you know a well-established figure for that
+   country's recent polling error, propose it **and name the source**. Never
+   invent a country-specific number: a fabricated 3.1 looks researched in a way
+   a stated 2.5 does not.
 
 ## Step 4 — Check before you spend the time
 

@@ -58,6 +58,8 @@ To drive it yourself, without an assistant:
    ```yaml
    election:
      date: 2026-04-12
+     country: Hungary
+     system: mixed                 # what "most votes" is actually worth
    polls:
      file: polls.csv
    beliefs:

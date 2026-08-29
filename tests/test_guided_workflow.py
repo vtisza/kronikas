@@ -615,3 +615,75 @@ def test_the_yaml_the_form_generates_is_settings_the_runner_accepts(
     assert plan.thresholds_pp == [5.0]
     # And it survives the whole way to a model configuration.
     settings.build_model_config(plan)
+
+
+# --- where the election is, and what winning it means ----------------------
+
+
+def test_country_and_system_are_recorded(tmp_path):
+    plan = _plan(
+        "election:\n  date: 2026-04-12\n  country: Hungary\n  system: mixed\n"
+        "polls:\n  file: polls.csv\n",
+        tmp_path,
+    )
+    assert plan.country == "Hungary"
+    assert plan.system == "mixed"
+    text = "\n".join(settings.describe(plan))
+    assert "Where: Hungary" in text
+    assert "districts plus compensatory party lists" in text
+
+
+def test_an_unlisted_system_is_accepted_not_refused(tmp_path):
+    """Electoral systems are more varied than any list we could ship."""
+    plan = _plan(
+        "election:\n  date: 2026-04-12\n  system: single transferable vote\n"
+        "polls:\n  file: polls.csv\n",
+        tmp_path,
+    )
+    assert plan.system == "single transferable vote"
+    assert "single transferable vote" in "\n".join(settings.describe(plan))
+
+
+def test_omitting_them_is_still_valid(tmp_path):
+    plan = _plan(MINIMAL, tmp_path)
+    assert plan.country is None and plan.system is None
+    assert "Where: country not stated" in "\n".join(settings.describe(plan))
+
+
+@pytest.mark.parametrize(
+    ("system", "expected"),
+    [
+        ("list-pr", "largest party often does not govern"),
+        ("districts", "lead the vote and lose the chamber"),
+        ("runoff", "This is the first round"),
+        ("electoral-college", "does not decide this election"),
+        ("plurality", "does decide this contest"),
+    ],
+)
+def test_the_report_caveat_matches_the_system(system, expected, tmp_path):
+    payload = _payload()
+    payload["election"]["system"] = system
+    payload["election"]["country"] = "Sampleland"
+    page = make_report.build_from_data(payload, tmp_path / "r.html").read_text(
+        encoding="utf-8"
+    )
+    assert expected in page
+    assert "Sampleland" in page
+
+
+def test_an_unknown_system_falls_back_to_the_general_caveat(tmp_path):
+    payload = _payload()
+    payload["election"]["system"] = "single transferable vote"
+    page = make_report.build_from_data(payload, tmp_path / "r.html").read_text(
+        encoding="utf-8"
+    )
+    assert "runoffs, district seats, electoral colleges or" in page
+
+
+def test_the_form_asks_where_and_which_system(poll_data, tmp_path):
+    from kronikas.guided import form
+
+    page = form.build(poll_data, tmp_path / "f.html").read_text(encoding="utf-8")
+    assert 'id="country"' in page
+    for system in settings.ELECTORAL_SYSTEMS:
+        assert f'value="{system}"' in page

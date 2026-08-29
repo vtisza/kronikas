@@ -8,6 +8,19 @@
 election:
   name: My election 2026        # only used as the report's title
   date: 2026-04-12              # the day votes are counted (YYYY-MM-DD)
+  country: Somewhere            # recorded on the report; does not change the model
+  system: list-pr               # what "most votes" is worth here. One of:
+                                #   list-pr           proportional party lists
+                                #   districts         one seat per district
+                                #   mixed             districts plus lists
+                                #   runoff            two rounds
+                                #   plurality         one nationwide contest
+                                #   electoral-college an intermediate body decides
+                                # Anything else is accepted and printed as-is.
+                                # Only changes what the report says, never the
+                                # numbers — but "most votes" and "takes office"
+                                # are different questions, and this is how the
+                                # report knows which one it is answering.
   as_of: null                   # pretend it is this date; null = today.
                                 # Polls after this date are ignored, which is
                                 # how you check the model against a past race.
