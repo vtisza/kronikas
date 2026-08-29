@@ -82,6 +82,27 @@ Screenshot the top of the resulting `report.html` at 1180x880 (capture at
 election-day range chart. Because it is a real run the numbers move between
 runs; the caption claims only that it is a real run, so that is fine.
 
+## Narrow screens
+
+The page is a single column at phone width, with three things to keep in mind
+when editing it:
+
+- **Grid and flex children need `min-width: 0`.** Their default is
+  `min-width: auto`, so the longest unwrappable line inside them — a `<pre>`,
+  usually — becomes a floor the column cannot shrink below. Because `body` sets
+  `overflow-x: hidden`, anything past the viewport is clipped with no way to
+  scroll to it, so the text simply disappears off the right edge. The rule near
+  the top of `styles.css` covers the containers that exist today; a new grid
+  needs adding to it.
+- **The sticky nav sheds links as it narrows**, widest label first:
+  `.is-optional` at 860px, `.is-optional--sm` at 560px, `.is-optional--xs` at
+  380px. A new link needs a tier, or the bar wraps onto a second line.
+- **The hero fan chart holds a 660px minimum** and scrolls inside
+  `.chart__scroll`, since squeezing it to phone width makes the axis illegible.
+
+Worth re-checking at 320px, 390px and 768px after any layout change: the page
+should never scroll horizontally as a whole, only inside a `<pre>` or the chart.
+
 ## Keeping it honest
 
 Because this branch is never reviewed alongside a code change, the page can

@@ -74,12 +74,12 @@
       <span class="brand__what">election forecasting</span>
     </a>
     <nav class="nav__links">
-      <a href="#what">What is it</a>
+      <a href="#what" class="is-optional--sm">What is it</a>
       <a href="#why" class="is-optional">Why</a>
       <a href="#model" class="is-optional">Model</a>
       <a href="#guided" class="is-optional">No code</a>
       <a href="#code" class="is-optional">Code</a>
-      <a href="#honesty">Honesty</a>
+      <a href="#honesty" class="is-optional--xs">Honesty</a>
       <a href="https://github.com/vtisza/kronikas#readme">Docs</a>
       <a href="https://github.com/vtisza/kronikas" aria-label="kronikas on GitHub"><svg width="16" height="16" style="vertical-align:-2px"><use href="#gh"/></svg></a>
     </nav>
@@ -213,6 +213,7 @@
         </g>
       </svg>
       </div>
+      <p class="chart__swipe" aria-hidden="true">Scroll the chart sideways →</p>
       <figcaption class="chart__guide">
         <b>How to read this.</b> Each dot is one published poll. The solid line is the
         model's best estimate of where a party truly stands — not the polls themselves,
@@ -569,11 +570,14 @@
     </div>
 
     <figure class="frame reveal" style="margin-top:44px;padding:14px;overflow:hidden">
+      <a href="assets/report-preview.png" style="display:block;text-decoration:none">
       <img src="assets/report-preview.png" alt="The top of a generated report: a headline reading &quot;Progress leads, with a 68% chance of finishing first&quot;, the break-even polling error in the opening paragraph, a bar chart of each party's chance of finishing first, and a dot-and-interval chart of election-day vote share." width="1180" height="880" loading="lazy" style="display:block;width:100%;height:auto;border-radius:8px">
+      </a>
       <figcaption style="font-size:14px;color:var(--muted);margin-top:14px;padding:0 6px 4px">
         A real run, from the sample polls that ship with the package. The report opens
         offline, needs nothing installed to read, and can be rebuilt from its own data
-        without refitting the model.
+        without refitting the model. <a href="assets/report-preview.png" style="color:var(--flame)">Open the
+        screenshot full size</a> if the type is too small to read here.
       </figcaption>
     </figure>
 

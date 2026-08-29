@@ -66,6 +66,9 @@ body::before {
 }
 
 img, svg { max-width: 100%; }
+/* The UA default is margin-inline: 40px, which on a phone spends a quarter of
+   the line on empty gutter — worst for the one figure that is a screenshot. */
+figure { margin-inline: 0; }
 a { color: inherit; }
 
 h1, h2, h3 {
@@ -78,11 +81,19 @@ h1, h2, h3 {
   text-wrap: balance;
 }
 
-p { margin: 0; text-wrap: pretty; }
+p { margin: 0; text-wrap: pretty; overflow-wrap: break-word; }
 
 /* -------------------------------------------------------------- layout -- */
 
 .wrap { width: 100%; max-width: var(--maxw); margin-inline: auto; padding-inline: var(--gut); position: relative; z-index: 1; }
+
+/* A grid or flex item defaults to min-width:auto, so its min-content width — set
+   by the longest unwrappable line inside it, typically a <pre> — becomes a floor
+   the column cannot go below. On a phone that floor pushed the page wider than
+   the viewport, and body's overflow-x:hidden then clipped the surplus with no
+   way to scroll to it. Let every track shrink and hand the overflow to the
+   scrollable element that owns it. */
+.compare > *, .grid > *, .step > *, .pull > *, .proof > *, .live > *, .foot__in > * { min-width: 0; }
 .band { position: relative; }
 .band--ink {
   background: var(--ink);
@@ -126,15 +137,23 @@ p { margin: 0; text-wrap: pretty; }
 .nav.is-stuck { border-bottom-color: var(--rule); }
 .nav__in { display: flex; align-items: center; gap: 10px; height: 66px; }
 .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; margin-right: auto; }
-.brand svg { width: 27px; height: 27px; display: block; }
+.brand svg { width: 27px; height: 27px; display: block; flex: none; }
 .brand__name { font-family: var(--display); font-size: 21px; font-weight: 600; font-variation-settings: "WONK" 1, "opsz" 20; letter-spacing: -.02em; }
 .nav__links { display: flex; align-items: center; gap: 4px; }
 .nav__links a {
   text-decoration: none; font-size: 14.5px; color: var(--muted);
   padding: 7px 12px; border-radius: 8px; transition: color .18s, background .18s;
+  flex: none; white-space: nowrap;
 }
 .nav__links a:hover { color: var(--text); background: rgba(19,26,36,.05); }
+
+/* The bar sheds links as it narrows, widest label first, so what remains keeps
+   its full width instead of wrapping onto a second line or being cut off at the
+   right edge. Every section is still reachable by scrolling, and the footer
+   carries the off-site links. */
 @media (max-width: 860px) { .nav__links .is-optional { display: none; } }
+@media (max-width: 560px) { .nav__links .is-optional--sm { display: none; } }
+@media (max-width: 380px) { .nav__links .is-optional--xs { display: none; } }
 
 /* --------------------------------------------------------------- button -- */
 
@@ -412,11 +431,22 @@ pre code { font: inherit; }
 
 /* Narrow screens ------------------------------------------------------- */
 
+/* Hidden wherever the whole figure already fits; switched on below. */
+.chart__swipe {
+  display: none;
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+  margin: 10px 4px 0;
+}
+
 @media (max-width: 760px) {
   /* Squeezing the fan chart to phone width makes its axis labels illegible.
      Hold a readable minimum and let the figure scroll on its own. */
   .chart__scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .chart { min-width: 660px; }
+  /* Most of the figure — the series labels and their end-of-line values — sits
+     past the right edge on a phone, so say that it scrolls rather than leaving
+     it to be discovered. */
+  .chart__swipe { display: block; }
 }
 
 @media (max-width: 520px) {
@@ -425,6 +455,18 @@ pre code { font: inherit; }
   .card, .panel { padding: 24px 22px; }
   .live { padding: 26px 22px; }
   pre { padding: 18px 16px; font-size: 12.6px; }
+}
+
+/* Touch targets ---------------------------------------------------------
+   A pointer lands on a link; a thumb lands on a box around it. These rows
+   are laid out on their text alone, which leaves 23px-tall targets, so pad
+   them out on touch screens without moving the type. */
+@media (hover: none) and (pointer: coarse) {
+  .foot__links { gap: 2px 20px; }
+  .foot__links a { padding-block: 9px; }
+  .copy { padding: 11px 13px; }
+  .tabs__bar button { padding: 14px 15px; }
+  .cite summary { padding-block: 10px; }
 }
 
 /* Plain-language layer ---------------------------------------------------
