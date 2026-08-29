@@ -1,0 +1,31 @@
+# A complete, runnable example against the bundled sample polls.
+#   kronikas guided forecast.example.yaml --check
+#   kronikas guided forecast.example.yaml
+# Copy this file and polls.example.csv into the same directory first.
+election:
+  name: Sample election 2026
+  date: 2026-04-12
+  country: Sampleland
+  system: list-pr
+  as_of: 2026-03-06
+
+polls:
+  file: polls.example.csv
+
+beliefs:
+  volatility: normal
+  pollsters:
+    Northgate:
+      trust: low                 # a firm with a patchy record
+  industry_error:
+    uncertainty_pp: 2.0          # the industry could be 2 pp off either way
+
+run:
+  effort: standard               # a first look can use "quick" instead
+  time_step_days: 7
+  seed: 42
+
+report:
+  output_dir: example-output
+  thresholds_pp: [5]
+  industry_error_scenarios_pp: [1, 2, 3]

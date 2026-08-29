@@ -4,6 +4,12 @@ Exposes the forecast and backtest workflows as a ``kronikas`` executable so a
 scheduled job can produce machine-readable output without a Python wrapper::
 
     kronikas forecast polls.csv --election-date 2026-04-12 --json out.json
+
+and the guided workflow for people who would rather answer questions than
+assemble command lines::
+
+    kronikas skill install          # hand the workflow to an AI assistant
+    kronikas guided forecast.yaml   # or drive it yourself
 """
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ from . import __version__
 from .backtesting import backtest
 from .config import ModelConfig
 from .forecast import ElectionForecast
+from .guided.settings import SettingsError
 from .model import ForecastResult
 
 
@@ -235,6 +242,82 @@ def _run_backtest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_guided(args: argparse.Namespace) -> int:
+    """Handle the ``guided`` subcommand."""
+    from .guided.runner import run
+    from .guided.settings import load_plan
+
+    plan = load_plan(args.settings)
+    if args.output is not None:
+        plan.output_dir = args.output
+    return run(
+        plan,
+        check_only=args.check,
+        save_trace=args.save_trace,
+        build_report=not args.no_report,
+    )
+
+
+def _run_form(args: argparse.Namespace) -> int:
+    """Handle the ``form`` subcommand."""
+    from .data import load_polls
+    from .guided.form import build
+
+    poll_data = load_polls(
+        args.polls_csv,
+        date_column=args.date_column,
+        pollster_column=args.pollster_column,
+        sample_size_column=args.sample_size_column,
+        undecided_column=args.undecided_column,
+        candidate_columns=args.candidate_columns,
+        date_format=args.date_format,
+        decimal=args.decimal,
+    )
+    destination = args.output or args.polls_csv.parent / "settings-builder.html"
+    written = build(
+        poll_data,
+        destination,
+        election_date=args.election_date,
+        polls_filename=args.polls_csv.name,
+        decimal=args.decimal,
+    )
+    print(f"Settings form: {written.resolve()}")
+    print(
+        "Open it in a browser, fill it in, and save the file it gives you as "
+        "forecast.yaml next to your polls."
+    )
+    return 0
+
+
+def _run_report(args: argparse.Namespace) -> int:
+    """Handle the ``report`` subcommand."""
+    from .guided.report import build
+
+    written = build(args.data, args.output)
+    print(f"Report: {written.resolve()}")
+    return 0
+
+
+def _run_skill(args: argparse.Namespace) -> int:
+    """Handle the ``skill`` subcommand."""
+    from .guided import skill
+
+    if args.skill_command == "path":
+        print(skill.packaged_path())
+        return 0
+    target = args.dir or skill.default_target()
+    try:
+        installed = skill.copy_to(target, force=args.force)
+    except FileExistsError as exc:
+        raise ValueError(str(exc)) from None
+    print(f"Skill installed to {installed}")
+    print(
+        "Start your assistant in any directory and ask it to forecast an "
+        "election from your polls."
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Construct the top-level argument parser."""
     parser = argparse.ArgumentParser(
@@ -318,6 +401,126 @@ def build_parser() -> argparse.ArgumentParser:
     )
     backtest_parser.set_defaults(func=_run_backtest)
 
+    guided_parser = subparsers.add_parser(
+        "guided",
+        help="Run a forecast from a plain-language settings file.",
+        description=(
+            "Fit a forecast described by a settings file written in words "
+            "rather than statistics, and write a self-contained HTML report. "
+            "Start from the template printed by 'kronikas skill path'."
+        ),
+    )
+    guided_parser.add_argument(
+        "settings", type=Path, help="Path to the settings file (forecast.yaml)."
+    )
+    guided_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Validate the settings and the poll file, then stop. No sampling.",
+    )
+    guided_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="Override the settings file's report.output_dir.",
+    )
+    guided_parser.add_argument(
+        "--save-trace",
+        action="store_true",
+        help="Also write the full posterior to posterior.nc in the output directory.",
+    )
+    guided_parser.add_argument(
+        "--no-report", action="store_true", help="Skip building report.html."
+    )
+    guided_parser.set_defaults(func=_run_guided)
+
+    form_parser = subparsers.add_parser(
+        "form",
+        help="Build a browser form for writing the settings file.",
+        description=(
+            "Read a poll file and write a self-contained HTML page with a "
+            "control for every party and pollster in it. Fill it in, download "
+            "the settings file, and run 'kronikas guided' on it."
+        ),
+    )
+    form_parser.add_argument("polls_csv", type=Path, help="Path to the poll CSV.")
+    form_parser.add_argument(
+        "--election-date",
+        type=_parse_date,
+        default=None,
+        help="Pre-fill the election date (YYYY-MM-DD).",
+    )
+    form_parser.add_argument("--date-column", default="date")
+    form_parser.add_argument("--pollster-column", default="pollster")
+    form_parser.add_argument("--sample-size-column", default="sample_size")
+    form_parser.add_argument("--undecided-column", default=None)
+    form_parser.add_argument(
+        "--candidate-column",
+        action="append",
+        dest="candidate_columns",
+        metavar="NAME",
+        help="Restrict to this candidate column. Repeat for each candidate.",
+    )
+    form_parser.add_argument("--date-format", default=None)
+    form_parser.add_argument(
+        "--decimal",
+        default=".",
+        help="Decimal separator in the CSV (use ',' for European-style files).",
+    )
+    form_parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Where to write the page (default: settings-builder.html "
+        "beside the poll file).",
+    )
+    form_parser.set_defaults(func=_run_form)
+
+    report_parser = subparsers.add_parser(
+        "report",
+        help="Rebuild report.html from a finished run, without refitting.",
+    )
+    report_parser.add_argument(
+        "data", type=Path, metavar="REPORT_DATA_JSON", help="Path to report_data.json."
+    )
+    report_parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Where to write the HTML (default: report.html beside the JSON).",
+    )
+    report_parser.set_defaults(func=_run_report)
+
+    skill_parser = subparsers.add_parser(
+        "skill",
+        help="Install the assistant skill for the guided workflow.",
+    )
+    skill_subparsers = skill_parser.add_subparsers(dest="skill_command", required=True)
+    install_parser = skill_subparsers.add_parser(
+        "install", help="Copy the skill where an AI assistant will find it."
+    )
+    install_parser.add_argument(
+        "--dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Skills directory to install into (default: ~/.claude/skills).",
+    )
+    install_parser.add_argument(
+        "--force", action="store_true", help="Overwrite an existing installation."
+    )
+    path_parser = skill_subparsers.add_parser(
+        "path", help="Print where the skill lives inside the installed package."
+    )
+    path_parser.set_defaults(func=_run_skill)
+    install_parser.set_defaults(func=_run_skill)
+    skill_parser.set_defaults(func=_run_skill)
+
     return parser
 
 
@@ -327,7 +530,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
-    except (ValueError, FileNotFoundError) as exc:
+    except (ValueError, FileNotFoundError, SettingsError) as exc:
         parser.exit(2, f"error: {exc}\n")
     return 0
 

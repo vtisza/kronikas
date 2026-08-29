@@ -100,14 +100,25 @@ jobs:
       - name: Build distributions
         run: uv build
 
-      - name: Verify py.typed is packaged
+      - name: Verify py.typed and the guided skill are packaged
         run: |
           python - <<'PY'
           import glob, sys, zipfile
 
           wheel = sorted(glob.glob("dist/*.whl"))[-1]
           names = zipfile.ZipFile(wheel).namelist()
-          if "kronikas/py.typed" not in names:
-              sys.exit(f"py.typed missing from {wheel}")
-          print(f"py.typed present in {wheel}")
+          required = [
+              "kronikas/py.typed",
+              "kronikas/skill/SKILL.md",
+              "kronikas/skill/assets/forecast.template.yaml",
+          ]
+          for name in required:
+              if name not in names:
+                  sys.exit(f"{name} missing from {wheel}")
+          # `kronikas skill install` copies the whole tree, so a reference that
+          # silently stopped shipping would leave a broken install behind.
+          references = [n for n in names if n.startswith("kronikas/skill/references/")]
+          if len(references) < 5:
+              sys.exit(f"only {len(references)} skill references in {wheel}")
+          print(f"py.typed and {len(references) + 2} skill files present in {wheel}")
           PY

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A guided, no-code workflow, shipped in the package as `kronikas.guided`: a
+  plain-language `forecast.yaml` settings file (election, poll CSV, opinion
+  volatility, per-pollster leans and trust, industry-wide polling error) and a
+  self-contained HTML report covering win probabilities, forecast ranges, the
+  trend with its polls, house effects, the break-even polling error and a
+  plain-language model-health verdict.
+- `kronikas guided` runs a forecast from such a settings file, with a `--check`
+  mode that validates the settings and the poll file — naming the likely
+  intended spelling of an unrecognised party or pollster — before sampling.
+- The guided workflow asks where the election is and how votes turn into power
+  (`election.country`, `election.system`). Neither changes a number: the system
+  selects which caveat the report prints about what "most votes" is worth, so a
+  list-PR forecast says the largest party often does not govern and a runoff
+  forecast says these are first-round shares. Unrecognised systems are accepted
+  and reported verbatim, falling back to the general caveat.
+- `kronikas form` builds a self-contained browser page for writing the settings
+  file, with a control for every party and pollster found in the user's own
+  poll file and the resulting YAML updating live. Offered because the beliefs
+  are the fiddly part: a lean per party per firm is a dozen small numbers.
+- `kronikas report` rebuilds the HTML page from a finished run without
+  refitting.
+- `kronikas skill install` installs the accompanying assistant skill into
+  `~/.claude/skills/`, so an AI assistant can conduct the whole interview.
+  The skill files travel in the wheel and CI checks they are packaged.
+
 ### Fixed in the current review
 
 - Forecast runs now exclude polls after `today` (or election day, whichever is
