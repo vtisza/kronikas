@@ -77,6 +77,7 @@
       <a href="#what">What is it</a>
       <a href="#why" class="is-optional">Why</a>
       <a href="#model" class="is-optional">Model</a>
+      <a href="#guided" class="is-optional">No code</a>
       <a href="#code" class="is-optional">Code</a>
       <a href="#honesty">Honesty</a>
       <a href="https://github.com/vtisza/kronikas#readme">Docs</a>
@@ -478,16 +479,125 @@
   </div>
 </section>
 
+<!-- ============================================================= guided -- -->
+<section class="band band--raised section" id="guided">
+  <div class="wrap">
+    <p class="label reveal"><b>05</b> Without writing code</p>
+    <h2 class="reveal" style="font-size:clamp(28px,3.6vw,42px);max-width:21ch">Answer questions. Get a forecast.</h2>
+    <p class="lede reveal" style="margin-top:20px">
+      Everything below this section assumes Python. This one does not. The package ships a
+      guided workflow — plain-language settings, one command, and a report written to be
+      read rather than decoded — plus a skill that hands the whole thing to an AI assistant,
+      which asks the questions and explains the answers.
+    </p>
+
+    <div class="steps">
+
+      <article class="step reveal">
+        <div class="step__n">1<small>Install</small></div>
+        <div>
+          <h3>Two commands, then talk to it</h3>
+          <p>
+            <code>pip install kronikas</code>, then <code>kronikas skill install</code> copies
+            the skill into <code>~/.claude/skills/</code>. Claude Code — or any assistant you
+            paste <code>SKILL.md</code> into — then runs the interview: what the election is,
+            where, which polls, and what you believe about the pollsters.
+          </p>
+        </div>
+        <svg class="step__viz" viewBox="0 0 240 92" fill="none" aria-hidden="true">
+          <rect x="0" y="0" width="240" height="92" rx="8" fill="rgba(19,26,36,.04)"/>
+          <rect x="14" y="14" width="150" height="9" rx="4.5" fill="rgba(19,26,36,.22)"/>
+          <rect x="14" y="29" width="108" height="9" rx="4.5" fill="rgba(19,26,36,.13)"/>
+          <rect x="14" y="52" width="62" height="22" rx="11" fill="#e04e2a"/>
+          <text x="45" y="66.5" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#fffdf7">Normal</text>
+          <rect x="82" y="52" width="60" height="22" rx="11" fill="none" stroke="rgba(19,26,36,.22)"/>
+          <text x="112" y="66.5" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="rgba(19,26,36,.45)">Volatile</text>
+          <rect x="148" y="52" width="50" height="22" rx="11" fill="none" stroke="rgba(19,26,36,.22)"/>
+          <text x="173" y="66.5" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="rgba(19,26,36,.45)">Calm</text>
+        </svg>
+      </article>
+
+      <article class="step reveal">
+        <div class="step__n">2<small>Describe</small></div>
+        <div>
+          <h3>Beliefs in words, not logit scales</h3>
+          <p>
+            How fast opinion moves is <code>calm</code>, <code>normal</code> or
+            <code>volatile</code>. A firm you distrust gets <code>trust: low</code>. The one
+            thing no model can learn — how wrong every pollster might be at once — is a
+            number you set, and the workflow asks for it every time. Prefer clicking?
+            <code>kronikas form polls.csv</code> builds a page with a control for every party
+            and firm in your own file.
+          </p>
+        </div>
+        <svg class="step__viz" viewBox="0 0 240 92" fill="none" aria-hidden="true">
+          <rect x="0" y="0" width="240" height="92" rx="8" fill="rgba(19,26,36,.04)"/>
+          <line x1="18" y1="30" x2="222" y2="30" stroke="rgba(19,26,36,.16)" stroke-width="3" stroke-linecap="round"/>
+          <line x1="18" y1="30" x2="120" y2="30" stroke="#e04e2a" stroke-width="3" stroke-linecap="round"/>
+          <circle cx="120" cy="30" r="8" fill="#e04e2a"/>
+          <text x="18" y="52" font-family="JetBrains Mono,monospace" font-size="9" fill="var(--muted)">industry_error</text>
+          <text x="222" y="52" text-anchor="end" font-family="JetBrains Mono,monospace" font-size="9" fill="#e04e2a">2.5 pp</text>
+          <rect x="18" y="64" width="204" height="16" rx="5" fill="rgba(19,26,36,.05)"/>
+          <text x="26" y="75.5" font-family="JetBrains Mono,monospace" font-size="8.5" fill="var(--muted)">volatility: normal</text>
+        </svg>
+      </article>
+
+      <article class="step reveal">
+        <div class="step__n">3<small>Read it</small></div>
+        <div>
+          <h3>One page, and what it will not tell you</h3>
+          <p>
+            <code>kronikas guided forecast.yaml</code> writes a self-contained
+            <code>report.html</code>: win probabilities, forecast ranges, the trend with the
+            polls behind it, each firm's lean, and the smallest industry-wide error that
+            would erase the lead. It states its own health in words, and says plainly what
+            "most votes" is worth under your electoral system.
+          </p>
+        </div>
+        <svg class="step__viz" viewBox="0 0 240 92" fill="none" aria-hidden="true">
+          <rect x="0" y="0" width="240" height="92" rx="8" fill="rgba(19,26,36,.04)"/>
+          <rect x="16" y="14" width="120" height="8" rx="4" fill="rgba(19,26,36,.25)"/>
+          <rect x="16" y="34" width="140" height="12" rx="4" fill="#e04e2a"/>
+          <rect x="160" y="34" width="64" height="12" rx="4" fill="rgba(19,26,36,.08)"/>
+          <rect x="16" y="52" width="72" height="12" rx="4" fill="#1e8e86"/>
+          <rect x="92" y="52" width="132" height="12" rx="4" fill="rgba(19,26,36,.08)"/>
+          <rect x="16" y="70" width="26" height="12" rx="4" fill="#d9a03c"/>
+          <rect x="46" y="70" width="178" height="12" rx="4" fill="rgba(19,26,36,.08)"/>
+        </svg>
+      </article>
+
+    </div>
+
+    <figure class="frame reveal" style="margin-top:44px;padding:14px;overflow:hidden">
+      <img src="assets/report-preview.png" alt="The top of a generated report: a headline reading &quot;Progress leads, with a 68% chance of finishing first&quot;, the break-even polling error in the opening paragraph, a bar chart of each party's chance of finishing first, and a dot-and-interval chart of election-day vote share." width="1180" height="880" loading="lazy" style="display:block;width:100%;height:auto;border-radius:8px">
+      <figcaption style="font-size:14px;color:var(--muted);margin-top:14px;padding:0 6px 4px">
+        A real run, from the sample polls that ship with the package. The report opens
+        offline, needs nothing installed to read, and can be rebuilt from its own data
+        without refitting the model.
+      </figcaption>
+    </figure>
+
+    <div class="reveal" style="margin-top:36px;display:flex;flex-wrap:wrap;gap:14px;align-items:center">
+      <span class="cmd">
+        <span class="cmd__prompt">$</span>
+        <code>kronikas skill install</code>
+        <button class="copy" data-copy="kronikas skill install">Copy</button>
+      </span>
+      <a class="btn btn--ghost" href="https://github.com/vtisza/kronikas#not-a-programmer-start-here">How it works <svg><use href="#arrow"/></svg></a>
+    </div>
+  </div>
+</section>
+
 <!-- =============================================================== code -- -->
 <section class="section" id="code">
   <div class="wrap">
-    <p class="label reveal"><b>05</b> In practice</p>
+    <p class="label reveal"><b>06</b> In practice</p>
     <h2 class="reveal" style="font-size:clamp(28px,3.6vw,42px);max-width:22ch">A CSV in. Defensible probabilities out.</h2>
     <p class="lede reveal" style="margin-top:20px">
       One row per poll: a date, a pollster, a sample size, and a column per candidate.
       Everything else is a keyword argument.
     </p>
-    <p class="skipnote reveal">Code from here on. If you are not the person who will run it, skip to <a href="#honesty">what the model cannot see</a>.</p>
+    <p class="skipnote reveal">Code from here on. If you are not the person who will run it, <a href="#guided">the guided workflow</a> needs none of it — or skip to <a href="#honesty">what the model cannot see</a>.</p>
 
     <div class="tabs reveal">
       <div class="tabs__bar" role="tablist" aria-label="Usage examples">
@@ -605,7 +715,7 @@ config <span class="t-op">=</span> <span class="t-fn">ModelConfig</span>(
 <!-- ============================================================ honesty -- -->
 <section class="band band--ink section" id="honesty">
   <div class="wrap">
-    <p class="label reveal"><b>06</b> The part nobody advertises</p>
+    <p class="label reveal"><b>07</b> The part nobody advertises</p>
     <div class="pull">
       <div class="reveal">
         <blockquote>
@@ -682,7 +792,7 @@ result.<span class="t-fn">shared_bias_breakeven</span>()
 <!-- ============================================================== proof -- -->
 <section class="section">
   <div class="wrap">
-    <p class="label reveal"><b>07</b> Evidence, not assertion</p>
+    <p class="label reveal"><b>08</b> Evidence, not assertion</p>
     <h2 class="reveal" style="font-size:clamp(28px,3.6vw,42px);max-width:24ch">A forecast that has never been scored is an opinion.</h2>
     <p class="lede reveal" style="margin-top:20px">
       So kronikas can be marked against elections that have already happened: rewind to a
@@ -737,7 +847,7 @@ Signed bias by candidate
 <!-- ============================================================== close -- -->
 <section class="band band--ink section close">
   <div class="wrap">
-    <p class="label reveal" style="justify-content:center"><b>08</b> Get started</p>
+    <p class="label reveal" style="justify-content:center"><b>09</b> Get started</p>
     <h2 class="reveal">Install it and argue with the numbers.</h2>
     <p class="lede reveal">
       Apache-2.0, typed, tested on Python 3.10 through 3.12, and citable. Contributions of

@@ -29,6 +29,7 @@ assets/styles.css         all styling
 assets/logo-mark.svg      the logo mark on its own, for reuse
 assets/favicon.svg        the mark on an ink tile, for browser tabs
 assets/og-image.png       1200x630 social preview card
+assets/report-preview.png the guided workflow's report, in section 05
 tools/generate_hero_chart.py   regenerates the hero fan chart
 ```
 
@@ -64,6 +65,22 @@ HTML are hand-written and must be kept in step with them.
 
 Nothing on the page is a forecast of any real election, and the figure says
 so in its caption.
+
+## Regenerating the report preview
+
+`assets/report-preview.png` in section 05 is a real run, not a mockup — the
+sample polls that ship with the package, forecast by the guided workflow:
+
+```bash
+pip install kronikas
+cp "$(kronikas skill path)"/assets/{polls.example.csv,forecast.example.yaml} .
+kronikas guided forecast.example.yaml
+```
+
+Screenshot the top of the resulting `report.html` at 1180x880 (capture at
+2x and downscale, so the type stays crisp), cropping just below the
+election-day range chart. Because it is a real run the numbers move between
+runs; the caption claims only that it is a real run, so that is fine.
 
 ## Keeping it honest
 
