@@ -789,7 +789,7 @@ If you use kronikas in your research, please cite it:
   month = {3},
   year = {2026},
   publisher = {Zenodo},
-  version = {0.1.0},
+  version = {0.1.2},
   doi = {10.5281/zenodo.19163741},
   url = {https://github.com/vtisza/kronikas}
 }

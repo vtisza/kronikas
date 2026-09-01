@@ -36,17 +36,26 @@ jobs:
           generate_release_notes: true
           files: dist/*
 
-      - name: Update CITATION.cff version
+      - name: Sync citation metadata to the released version
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           TODAY=$(date +'%Y-%m-%d')
+          MONTH=$(date +'%-m')
+          YEAR=$(date +'%Y')
+
           sed -i -e "s/^version: .*/version: ${VERSION}/" CITATION.cff
           sed -i -e "s/^date-released: .*/date-released: \"${TODAY}\"/" CITATION.cff
-          
+
+          # The README's BibTeX block quotes the same release; keep it in step,
+          # or it silently goes stale one release after the other.
+          sed -i -e "s/^  version = {.*},/  version = {${VERSION}},/" README.md
+          sed -i -e "s/^  month = {.*},/  month = {${MONTH}},/" README.md
+          sed -i -e "s/^  year = {.*},/  year = {${YEAR}},/" README.md
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CITATION.cff
+          git add CITATION.cff README.md
           if ! git diff --staged --quiet; then
-            git commit -m "docs: update CITATION.cff version to ${VERSION} [skip ci]"
+            git commit -m "docs: update citation metadata to ${VERSION} [skip ci]"
             git push origin HEAD:main
           fi

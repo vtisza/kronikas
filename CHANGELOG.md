@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-01
+
 ### Added
 
 - A guided, no-code workflow, shipped in the package as `kronikas.guided`: a
@@ -33,61 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `kronikas skill install` installs the accompanying assistant skill into
   `~/.claude/skills/`, so an AI assistant can conduct the whole interview.
   The skill files travel in the wheel and CI checks they are packaged.
-
-### Fixed in the current review
-
-- Forecast runs now exclude polls after `today` (or election day, whichever is
-  earlier); lower-level model construction rejects post-election observations.
-- House effects are zero-sum across both candidates and pollsters in an
-  identifiable `ZeroSumNormal` parameterisation, even without shared bias.
-- Unknown or zero-only shared-bias keys no longer activate a different model.
-- Shared-bias spread is jointly calibrated in vote-share percentage points,
-  and saved scenario results reload with their adjusted samples intact.
-- Shared-bias break-even now tests whether the leader beats every candidate,
-  not merely the original runner-up.
-- Initial support comes from the earliest occupied time node and the largest
-  early candidate is used as the internal log-ratio reference.
-- Poll, prior, sampler, and actual-result inputs reject non-finite or otherwise
-  invalid values; same-date poll ordering is stable.
-- The Dirichlet concentration floor is smooth, and an optional
-  `undecided_column` scales effective sample size by the decided fraction.
-- Supported Python is explicitly constrained to the CI-tested 3.10–3.12 range,
-  and duplicate citation-release automation was removed.
-
-### Changed in the current review
-
-- Backtests report CRPS and call their single-election interval statistic a
-  hit rate rather than claiming it establishes calibration (`coverage_90`
-  remains as a compatibility alias). The old
-  `kronikas.backtest` module path was renamed to `kronikas.backtesting`; import
-  `backtest` from the package root or the new module path.
-
-### Fixed
-
-- **The time grid now ends exactly on election day.** It is anchored backwards
-  from the election rather than forwards from the first poll. Previously the
-  final node could land up to `time_step_days - 1` days *after* the election,
-  so `election_day_estimates` described the wrong date and its credible
-  interval carried a spurious extra step of random-walk drift. The grid now
-  starts on or just before the first poll instead.
-- **`sigma_walk_prior` is no longer sensitive to the grid resolution.** The
-  prior is expressed per `walk_reference_days` (7 by default) and rescaled to
-  the actual step length, so changing `time_step_days` changes the resolution
-  of the trend without also changing how volatile the prior says it is.
-  Previously, halving the step size implicitly doubled the weekly prior
-  variance. With the shipped defaults the per-step scale is unchanged.
-- **`mu_house` is converted relative to each candidate's own support level.**
-  A fixed 50 % baseline understated small-party biases roughly four-fold: a
-  +3 pp bias is a logit shift of 0.12 at 50 % support but 0.50 at 5 %. The
-  conversion is unchanged for a candidate polling at 50 %.
-- Polls dated after `election_date`, and a `today` outside the modelled window,
-  now raise a warning instead of being silently clamped into the grid.
-- `uv sync --group dev`, as documented in the README and CONTRIBUTING, now
-  works: a PEP 735 `[dependency-groups]` entry was added alongside the existing
-  `dev` extra, which continues to serve `pip install -e ".[dev]"`.
-
-### Added
-
 - **Backtesting** (`kronikas.backtesting`): refit as of past dates using only the
   polls available then, and score election-day forecasts for accuracy (MAE,
   RMSE) and calibration (90 % interval coverage). Bias is reported per
@@ -135,6 +82,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Backtests report CRPS and call their single-election interval statistic a
+  hit rate rather than claiming it establishes calibration (`coverage_90`
+  remains as a compatibility alias). The old
+  `kronikas.backtest` module path was renamed to `kronikas.backtesting`; import
+  `backtest` from the package root or the new module path.
 - `win_probabilities` is documented as the probability of holding a **plurality
   of the vote share**, not of winning office under a non-plurality electoral
   system. The summary heading now reads "Plurality probabilities (election
@@ -158,6 +110,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   including MCMC sampling — which `make test-fast` deselects entirely, leaving
   the sampling path previously untested on every push.
 
-## [0.1.0]
+### Fixed
+
+- Forecast runs now exclude polls after `today` (or election day, whichever is
+  earlier); lower-level model construction rejects post-election observations.
+- House effects are zero-sum across both candidates and pollsters in an
+  identifiable `ZeroSumNormal` parameterisation, even without shared bias.
+- Unknown or zero-only shared-bias keys no longer activate a different model.
+- Shared-bias spread is jointly calibrated in vote-share percentage points,
+  and saved scenario results reload with their adjusted samples intact.
+- Shared-bias break-even now tests whether the leader beats every candidate,
+  not merely the original runner-up.
+- Initial support comes from the earliest occupied time node and the largest
+  early candidate is used as the internal log-ratio reference.
+- Poll, prior, sampler, and actual-result inputs reject non-finite or otherwise
+  invalid values; same-date poll ordering is stable.
+- The Dirichlet concentration floor is smooth, and an optional
+  `undecided_column` scales effective sample size by the decided fraction.
+- Supported Python is explicitly constrained to the CI-tested 3.10–3.12 range,
+  and duplicate citation-release automation was removed.
+- **The time grid now ends exactly on election day.** It is anchored backwards
+  from the election rather than forwards from the first poll. Previously the
+  final node could land up to `time_step_days - 1` days *after* the election,
+  so `election_day_estimates` described the wrong date and its credible
+  interval carried a spurious extra step of random-walk drift. The grid now
+  starts on or just before the first poll instead.
+- **`sigma_walk_prior` is no longer sensitive to the grid resolution.** The
+  prior is expressed per `walk_reference_days` (7 by default) and rescaled to
+  the actual step length, so changing `time_step_days` changes the resolution
+  of the trend without also changing how volatile the prior says it is.
+  Previously, halving the step size implicitly doubled the weekly prior
+  variance. With the shipped defaults the per-step scale is unchanged.
+- **`mu_house` is converted relative to each candidate's own support level.**
+  A fixed 50 % baseline understated small-party biases roughly four-fold: a
+  +3 pp bias is a logit shift of 0.12 at 50 % support but 0.50 at 5 %. The
+  conversion is unchanged for a candidate polling at 50 %.
+- Polls dated after `election_date`, and a `today` outside the modelled window,
+  now raise a warning instead of being silently clamped into the grid.
+- `uv sync --group dev`, as documented in the README and CONTRIBUTING, now
+  works: a PEP 735 `[dependency-groups]` entry was added alongside the existing
+  `dev` extra, which continues to serve `pip install -e ".[dev]"`.
+
+## [0.1.2] - 2026-03-22
+
+### Fixed
+
+- Removed the deprecated `License :: OSI Approved :: Apache Software License`
+  classifier, which is rejected alongside the PEP 639 `license = "Apache-2.0"`
+  field and had failed the 0.1.1 build. The license is unchanged.
+
+## [0.1.1] - 2026-03-22
+
+### Changed
+
+- Project metadata in `pyproject.toml`. Never published: the release build
+  failed on the license classifier fixed in 0.1.2, so there is no 0.1.1 on
+  PyPI and no GitHub release for the tag.
+
+## [0.1.0] - 2026-03-22
 
 Initial release.
