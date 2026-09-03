@@ -450,6 +450,11 @@ pre code { font: inherit; }
 }
 
 @media (max-width: 520px) {
+  /* The bar carries longer labels than the width has room for at the default
+     padding. Tighten the spacing between links rather than shedding one: the
+     contact link is the one a phone reader is most likely to want. */
+  .nav__links { gap: 2px; }
+  .nav__links a { padding-inline: 9px; }
   .hero__eyebrow { font-size: 11px; letter-spacing: .08em; }
   .step { padding: 24px 20px; }
   .card, .panel { padding: 24px 22px; }
