@@ -776,6 +776,18 @@ We welcome contributions of all kinds: bug reports, feature ideas, documentation
 
 👉 **See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding guidelines, and how to submit a pull request.**
 
+## Contact
+
+Questions about the model, ideas for a collaboration, or want to use kronikas for
+your own election coverage? Get in touch:
+
+- 📧 Email: [vtisza@gmail.com](mailto:vtisza@gmail.com)
+- 💼 LinkedIn: [linkedin.com/in/viktor-tisza](https://www.linkedin.com/in/viktor-tisza)
+
+For bugs and feature requests, please open an
+[issue](https://github.com/vtisza/kronikas/issues) so the discussion stays public
+and searchable.
+
 ## Citation
 
 [![DOI](https://zenodo.org/badge/1188801535.svg)](https://doi.org/10.5281/zenodo.19163741)
