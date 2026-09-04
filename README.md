@@ -786,10 +786,10 @@ If you use kronikas in your research, please cite it:
 @software{Tisza_kronikas_2026,
   author = {Tisza, Viktor},
   title = {kronikas},
-  month = {3},
+  month = {9},
   year = {2026},
   publisher = {Zenodo},
-  version = {0.1.2},
+  version = {0.2.0},
   doi = {10.5281/zenodo.19163741},
   url = {https://github.com/vtisza/kronikas}
 }
